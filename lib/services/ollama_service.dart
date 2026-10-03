@@ -28,6 +28,10 @@ class OllamaService {
   static String friendlyError(Object e) {
     final m = e.toString();
     if (e is TimeoutException) {
+      final tm = e.message ?? '';
+      if (tm.contains('still loading')) {
+        return 'Ollama is reachable but the model took too long to load. Try again, or pick a smaller model.';
+      }
       return 'Timed out. The PC did not answer — check the IP, that both devices are on the same Wi-Fi, and that Windows Firewall allows port 11434.';
     }
     if (m.contains('Operation not permitted') || m.contains('errno = 1,')) {
@@ -184,8 +188,16 @@ class OllamaService {
         ..headers['Content-Type'] = 'application/json'
         ..body = body;
 
-      // 15s to reach the PC; after that the model may need a while to load.
-      final response = await client.send(request).timeout(const Duration(seconds: 15));
+      // Ollama only sends response headers once the model is loaded into memory,
+      // so this wait covers both the network hop AND a cold model load (can be
+      // 30-60s+ for large models). A short timeout here falsely reports "PC did
+      // not answer" when the PC is fine and just loading the model.
+      final response = await client.send(request).timeout(
+            const Duration(seconds: 120),
+            onTimeout: () => throw TimeoutException(
+              'Ollama did not start responding within 120s. The model may be too large for this PC, or it is still loading.',
+            ),
+          );
 
       if (response.statusCode != 200) {
         final body = await response.stream.bytesToString();
