@@ -339,11 +339,24 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
         model: widget.settings.model,
         prompt: prompt,
       );
-      target.text = text;
+      // Guard mounted — sheet may have been dismissed during the 180s window
+      if (mounted) setState(() => target.text = text);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Generation failed: $e')),
+        // Dialog works inside a bottom sheet; ScaffoldMessenger resolves to the
+        // sheet's scaffold and the snackbar fires into void.
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Generation failed'),
+            content: Text(OllamaService.friendlyError(e)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
         );
       }
     } finally {

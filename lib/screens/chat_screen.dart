@@ -65,8 +65,6 @@ class _ChatScreenState extends State<ChatScreen> {
   List<String> _memFacts = [];
   String? _loadedCharId;
 
-  Character? get _char => context.read<AppProvider>().activeChar;
-
   @override
   void dispose() {
     _input.dispose();
@@ -75,7 +73,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _loadChat() {
-    final c = _char;
+    final c = context.read<AppProvider>().activeChar;
     if (c == null) { setState(() => _history = []); return; }
     final store = StorageService.instance;
     var history = store.loadChat(c.id);
@@ -101,7 +99,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _send() async {
-    final c = _char;
+    final c = context.read<AppProvider>().activeChar;
     if (c == null || _input.text.trim().isEmpty || _streaming) return;
     final userMsg = _input.text.trim();
     _input.clear();
@@ -111,7 +109,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _regenerate() async {
-    final c = _char;
+    final c = context.read<AppProvider>().activeChar;
     if (c == null || _streaming) return;
     while (_history.isNotEmpty && _history.last.isAssistant) {
       _history.removeLast();
@@ -122,7 +120,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _generate({bool extractAfter = false}) async {
-    final c = _char;
+    final c = context.read<AppProvider>().activeChar;
     if (c == null) return;
     final ap = context.read<AppProvider>();
     final s = ap.settings;
@@ -179,7 +177,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _clearChat() {
-    final c = _char;
+    final c = context.read<AppProvider>().activeChar;
     if (c == null) return;
     showDialog(
       context: context,
@@ -202,7 +200,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _extractMemory() async {
-    final c = _char;
+    final c = context.read<AppProvider>().activeChar;
     if (c == null) return;
     final s = context.read<AppProvider>().settings;
     final facts = await OllamaService.instance.extractMemory(
@@ -221,7 +219,7 @@ class _ChatScreenState extends State<ChatScreen> {
   // ── History drawer ────────────────────────────────────────────────────────────
 
   void _openHistory() {
-    final c = _char;
+    final c = context.read<AppProvider>().activeChar;
     if (c == null) return;
     showModalBottomSheet(
       context: context,
@@ -274,20 +272,19 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final id = context.read<AppProvider>().activeChar?.id;
-    if (id != _loadedCharId && !_streaming) {
-      _loadedCharId = id;
-      _error = null;
-      _loadChat();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     final ap = context.watch<AppProvider>();
     final c = ap.activeChar;
+
+    // Detect character switch here — watch() guarantees a rebuild whenever
+    // activeChar changes, so this fires reliably where didChangeDependencies did not.
+    if (c?.id != _loadedCharId && !_streaming) {
+      _loadedCharId = c?.id;
+      _error = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadChat();
+      });
+    }
     final persona = ap.activePersona;
     final appearance = ap.appearance;
 
@@ -774,6 +771,8 @@ class _InputBar extends StatelessWidget {
 
   const _InputBar({required this.controller, required this.onSend, required this.enabled});
 
+  void _handleSend() => onSend();
+
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -792,8 +791,9 @@ class _InputBar extends StatelessWidget {
                   maxLines: 5,
                   minLines: 1,
                   keyboardType: TextInputType.multiline,
-                  textInputAction: TextInputAction.newline,
+                  textInputAction: enabled ? TextInputAction.send : TextInputAction.newline,
                   textCapitalization: TextCapitalization.sentences,
+                  onSubmitted: enabled ? (_) => _handleSend() : null,
                   decoration: InputDecoration(
                     hintText: enabled ? 'Message…' : 'Waiting for reply…',
                     filled: true,

@@ -81,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _save() {
     final ap = context.read<AppProvider>();
+    // Preserve appearance and activePersonaId — neither is editable on this screen.
     ap.saveSettings(AppSettings(
       ollamaUrl: _url.text.trim().isEmpty ? 'http://192.168.1.100:11434' : OllamaService.normalizeUrl(_url.text),
       model: _model.text.trim().isEmpty ? 'dolphin-mistral' : _model.text.trim(),
@@ -89,7 +90,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       responseStyle: _style,
       contextWindow: _ctx.round(),
       activePersonaId: ap.settings.activePersonaId,
+      appearance: ap.settings.appearance,
     ));
+    // Show the normalized URL so dj can confirm what was stored.
     _url.text = ap.settings.ollamaUrl;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Settings saved.'), behavior: SnackBarBehavior.floating),
