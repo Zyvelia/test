@@ -394,7 +394,10 @@ class _ChatScreenState extends State<ChatScreen> {
             : Column(
                 children: [
                   Expanded(
-                    child: Stack(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onTap: () => FocusScope.of(context).unfocus(),
+                      child: Stack(
                       children: [
                         _MessageList(
                           history: _history,
@@ -426,6 +429,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             ),
                           ),
                       ],
+                    ),
                     ),
                   ),
                   _InputBar(
@@ -771,8 +775,6 @@ class _InputBar extends StatelessWidget {
 
   const _InputBar({required this.controller, required this.onSend, required this.enabled});
 
-  void _handleSend() => onSend();
-
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -791,9 +793,8 @@ class _InputBar extends StatelessWidget {
                   maxLines: 5,
                   minLines: 1,
                   keyboardType: TextInputType.multiline,
-                  textInputAction: enabled ? TextInputAction.send : TextInputAction.newline,
+                  textInputAction: TextInputAction.newline,
                   textCapitalization: TextCapitalization.sentences,
-                  onSubmitted: enabled ? (_) => _handleSend() : null,
                   decoration: InputDecoration(
                     hintText: enabled ? 'Message…' : 'Waiting for reply…',
                     filled: true,

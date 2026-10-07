@@ -86,6 +86,19 @@ Characters, personas, chat logs, memories: `~/Documents/charchat/`
 
 ## Ollama connection troubleshooting
 
+### Over Tailscale (phone and PC on the same tailnet)
+
+Tailscale works from anywhere, so the phone does not need the PC's Wi-Fi IP.
+
+1. On the PC, run `tailscale ip -4` and note the `100.x.y.z` address (or use the PC's MagicDNS name).
+2. Set `OLLAMA_HOST=0.0.0.0` as a user environment variable, quit Ollama from the system tray, and start it again.
+3. Allow inbound TCP 11434 in Windows Firewall for the Tailscale network. The Tailscale adapter is often on the Public profile, so either allow the rule on Public or scope it to remote address `100.64.0.0/10`.
+4. In the app, set Server URL to `http://100.x.y.z:11434` and tap Test connection.
+5. Check that Tailscale is connected on the iPhone and that both devices show as online in the Tailscale admin console.
+
+Quick check: in Safari on the phone, `http://100.x.y.z:11434` should say "Ollama is running".
+
+
 In the app: **Settings → Test connection** tells you exactly what is wrong.
 
 - **iOS says blocked / "Operation not permitted"**: iPhone Settings → CharChat → enable **Local Network**

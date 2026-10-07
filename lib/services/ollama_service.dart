@@ -38,13 +38,13 @@ class OllamaService {
       return 'iOS blocked the connection. Go to iPhone Settings → CharChat → turn on Local Network, then try again.';
     }
     if (m.contains('No route to host') || m.contains('errno = 65')) {
-      return 'No route to the PC. Check the IP address and that your phone is on the same Wi-Fi (not cellular / guest network).';
+      return 'No route to the PC. Check the IP address. Over Tailscale, make sure the Tailscale VPN is connected on the phone and the PC is online in the admin console.';
     }
     if (m.contains('Connection refused') || m.contains('errno = 61') || m.contains('errno = 111')) {
       return 'Connection refused. Ollama is not running, or it is only listening on localhost. Set OLLAMA_HOST=0.0.0.0 and restart Ollama.';
     }
     if (m.contains('Connection timed out') || m.contains('errno = 60')) {
-      return 'Connection timed out. Usually the Windows Firewall — allow inbound TCP port 11434.';
+      return 'Connection timed out. Usually the Windows Firewall — allow inbound TCP port 11434 on the Tailscale (Public) profile too.';
     }
     if (m.contains('Failed host lookup')) {
       return 'Could not resolve that address. Use the PC\'s IPv4 address, e.g. 192.168.1.42.';

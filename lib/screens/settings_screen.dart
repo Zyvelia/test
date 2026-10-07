@@ -57,7 +57,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _statusOk = err == null;
       _status = err ?? 'Connected to ${OllamaService.normalizeUrl(_url.text)}';
     });
-    if (err == null) _fetchModels();
+    if (err == null) {
+      // Save the working URL right away so chat and AI buttons use it.
+      await _fetchModels();
+      if (mounted) _save();
+    }
   }
 
   Future<void> _fetchModels() async {
@@ -219,7 +223,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _row('Server URL', TextField(
               controller: _url,
               decoration: const InputDecoration(
-                hintText: '192.168.1.42:11434',
+                hintText: '100.x.y.z:11434 (Tailscale) or 192.168.1.42:11434',
                 prefixIcon: Icon(Icons.dns_outlined, size: 18),
               ),
               keyboardType: TextInputType.url,
@@ -449,9 +453,9 @@ class _HelpBox extends StatelessWidget {
       collapsedIconColor: kMuted,
       children: const [
         _Step('1', 'Quit Ollama (system tray), then set a user environment variable OLLAMA_HOST = 0.0.0.0 and start Ollama again.'),
-        _Step('2', 'Allow port 11434 in Windows Firewall (inbound, TCP, Private networks).'),
-        _Step('3', 'Use the PC\'s IPv4 from ipconfig, e.g. 192.168.1.42 — not "localhost".'),
-        _Step('4', 'Phone and PC must be on the same Wi-Fi. On the phone, open Safari to http://PC-IP:11434 — it should say "Ollama is running".'),
+        _Step('2', 'Allow port 11434 in Windows Firewall, inbound TCP. Tailscale\'s adapter is often on the Public profile, so allow it on Public too, or scope the rule to remote address 100.64.0.0/10.'),
+        _Step('3', 'Run `tailscale ip -4` on the PC and use that 100.x.y.z address (or the PC\'s MagicDNS name). Not \"localhost\".'),
+        _Step('4', 'Tailscale must be connected on the phone too, and both devices must be on the same tailnet. Test in Safari: http://100.x.y.z:11434 should say \"Ollama is running\".'),
         _Step('5', 'iPhone Settings → CharChat → Local Network must be ON.'),
       ],
     ),
