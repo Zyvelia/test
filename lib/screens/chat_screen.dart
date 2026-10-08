@@ -142,14 +142,10 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() { _streaming = true; _streamingText = ''; _error = null; });
     _scrollBottom();
 
-    final systemPrompt = OllamaService.instance.buildSystemPrompt(c, s, persona, _memFacts);
-    final ctx = _history.length > s.contextWindow
-        ? _history.sublist(_history.length - s.contextWindow)
-        : _history;
-
-    // silent wallet context injected as a system message — not shown to user
+    // wallet context appended to system prompt (not a second system message —
+    // consecutive system messages confuse many Ollama models)
     final walletCtx = _wallet != null
-        ? '<<WALLET_CONTEXT>>\n'
+        ? '\n\n<<WALLET_CONTEXT>>\n'
           'Currency: ${_wallet!.currencyName} (${_wallet!.currencySymbol})\n'
           '${c.name} balance: ${_wallet!.charBalance} ${_wallet!.currencyName}\n'
           'User balance: ${_wallet!.userBalance} ${_wallet!.currencyName}\n'
@@ -162,10 +158,15 @@ class _ChatScreenState extends State<ChatScreen> {
           'If currency name/symbol are not yet defined, pick ones fitting the world and use them consistently.\n'
           '<<END_WALLET_CONTEXT>>'
         : '';
+    final baseSystemPrompt = OllamaService.instance.buildSystemPrompt(c, s, persona, _memFacts);
+    final systemPrompt = walletCtx.isNotEmpty ? baseSystemPrompt + walletCtx : baseSystemPrompt;
+
+    final ctx = _history.length > s.contextWindow
+        ? _history.sublist(_history.length - s.contextWindow)
+        : _history;
 
     final messages = [
       {'role': 'system', 'content': systemPrompt},
-      if (walletCtx.isNotEmpty) {'role': 'system', 'content': walletCtx},
       ...ctx.map((m) => {'role': m.role, 'content': m.content}),
     ];
 
