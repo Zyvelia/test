@@ -1,5 +1,6 @@
 // personas_screen.dart — persona management
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -7,6 +8,8 @@ import '../models/models.dart';
 import '../providers/app_provider.dart';
 import '../services/ollama_service.dart';
 import '../theme.dart';
+
+const _jsonDecoder = JsonDecoder();
 
 class PersonasScreen extends StatelessWidget {
   const PersonasScreen({super.key});
@@ -229,12 +232,15 @@ class PersonaSheet extends StatefulWidget {
 
 class _PersonaSheetState extends State<PersonaSheet> {
   late final TextEditingController _name, _avatar, _appearance, _personality, _backstory, _traits;
+  late final TextEditingController _concept;
+  bool _wizardExpanded = false;
   final Map<String, bool> _generating = {};
 
   @override
   void initState() {
     super.initState();
     final p = widget.persona;
+    _concept     = TextEditingController();
     _name        = TextEditingController(text: p?.name ?? '');
     _avatar      = TextEditingController(text: p?.avatar ?? '');
     _appearance  = TextEditingController(text: p?.appearance ?? '');
@@ -245,7 +251,7 @@ class _PersonaSheetState extends State<PersonaSheet> {
 
   @override
   void dispose() {
-    for (final c in [_name, _avatar, _appearance, _personality, _backstory, _traits]) {
+    for (final c in [_concept, _name, _avatar, _appearance, _personality, _backstory, _traits]) {
       c.dispose();
     }
     super.dispose();
@@ -281,6 +287,95 @@ class _PersonaSheetState extends State<PersonaSheet> {
       '${_personality.text.isNotEmpty ? ' Personality: ${_personality.text.substring(0, _personality.text.length.clamp(0, 200))}.' : ''}'
       ' 2-3 sentences, grounded. Return only the backstory.');
 
+  // AI Wizard — builds full persona from a freeform concept
+  Future<void> _wizardGenerate() async {
+    final concept = _concept.text.trim();
+    if (concept.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Describe yourself'),
+          content: const Text('Type a short description — e.g. "tech girl, sarcastic, mid-20s, works late" — then tap Generate.'),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        ),
+      );
+      return;
+    }
+    setState(() => _generating['wizard'] = true);
+    try {
+      final prompt =
+          'You are a persona creation assistant. Given the concept below, return a JSON object with these exact keys:\n'
+          '"name" (string — a first name or handle),\n'
+          '"appearance" (2-3 sentences on physical description),\n'
+          '"personality" (2-3 sentences on communication style and emotional disposition),\n'
+          '"backstory" (2-3 sentences of relevant background),\n'
+          '"traits" (array of 3-6 short single-word or two-word trait strings).\n'
+          'Return ONLY valid JSON, no markdown fences, no commentary.\n\n'
+          'Concept: $concept';
+
+      final raw = await OllamaService.instance.generate(
+        baseUrl: widget.settings.ollamaUrl,
+        model: widget.settings.model,
+        prompt: prompt,
+      );
+
+      var clean = raw.trim();
+      clean = clean.replaceAll(RegExp(r'^```(?:json)?\n?|```$', multiLine: true), '').trim();
+
+      try {
+        final j = Map<String, dynamic>.from(
+          _jsonDecoder.convert(clean) as Map,
+        );
+        if (mounted) {
+          setState(() {
+            if ((j['name'] as String?)?.isNotEmpty == true) _name.text = j['name'] as String;
+            if ((j['appearance'] as String?)?.isNotEmpty == true) _appearance.text = j['appearance'] as String;
+            if ((j['personality'] as String?)?.isNotEmpty == true) _personality.text = j['personality'] as String;
+            if ((j['backstory'] as String?)?.isNotEmpty == true) _backstory.text = j['backstory'] as String;
+            final traits = j['traits'];
+            if (traits is List) _traits.text = traits.map((t) => t.toString()).join(', ');
+            _wizardExpanded = false;
+          });
+        }
+      } catch (_) {
+        if (mounted) setState(() => _appearance.text = raw.trim());
+      }
+    } catch (e) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Generation failed'),
+            content: Text(OllamaService.friendlyError(e)),
+            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _generating['wizard'] = false);
+    }
+  }
+
+  Future<void> _improve(String key, TextEditingController ctrl, String fieldName) async {
+    if (ctrl.text.trim().isEmpty) return;
+    final improveKey = '${key}_improve';
+    setState(() => _generating[improveKey] = true);
+    try {
+      final text = await OllamaService.instance.generate(
+        baseUrl: widget.settings.ollamaUrl,
+        model: widget.settings.model,
+        prompt: 'Improve the following $fieldName for a persona named $_nameStr. '
+                'Make it more vivid and specific. Keep the same core ideas. '
+                'Return only the improved text, no commentary.\n\n${ctrl.text.trim()}',
+      );
+      if (mounted) setState(() => ctrl.text = text);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+    } finally {
+      if (mounted) setState(() => _generating['${key}_improve'] = false);
+    }
+  }
+
   void _autofill() async {
     if (_name.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a name first.')));
@@ -306,15 +401,35 @@ class _PersonaSheetState extends State<PersonaSheet> {
     );
   }
 
-  Widget _genBtn(String key, VoidCallback fn) => IconButton(
-    icon: _generating[key] == true
-        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: kPrimary))
-        : const Icon(Icons.auto_awesome, size: 18),
-    onPressed: _generating[key] == true ? null : fn,
-    color: kPrimary,
-  );
+  Widget _genBtn(String key, VoidCallback fn) => _generating[key] == true
+      ? const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: kPrimary)),
+        )
+      : TextButton.icon(
+          icon: const Icon(Icons.auto_awesome, size: 14),
+          label: const Text('Generate', style: TextStyle(fontSize: 12)),
+          style: TextButton.styleFrom(foregroundColor: kPrimary, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          onPressed: fn,
+        );
 
-  Widget _field(String label, TextEditingController ctrl, String key, VoidCallback genFn, {int maxLines = 3, String hint = ''}) =>
+  Widget _improveBtn(String key, TextEditingController ctrl, String fieldName) {
+    final improveKey = '${key}_improve';
+    if (ctrl.text.trim().isEmpty) return const SizedBox.shrink();
+    return _generating[improveKey] == true
+        ? const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: kCyan)),
+          )
+        : TextButton.icon(
+            icon: const Icon(Icons.edit_note, size: 14),
+            label: const Text('Improve', style: TextStyle(fontSize: 12)),
+            style: TextButton.styleFrom(foregroundColor: kCyan, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            onPressed: () => _improve(key, ctrl, fieldName),
+          );
+  }
+
+  Widget _field(String label, TextEditingController ctrl, String key, VoidCallback genFn, {int maxLines = 3, String hint = '', String fieldName = ''}) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -322,6 +437,7 @@ class _PersonaSheetState extends State<PersonaSheet> {
             children: [
               Text(label, style: const TextStyle(color: kMuted, fontSize: 12, fontWeight: FontWeight.w500)),
               const Spacer(),
+              _improveBtn(key, ctrl, fieldName.isEmpty ? label.toLowerCase() : fieldName),
               _genBtn(key, genFn),
             ],
           ),
@@ -331,6 +447,7 @@ class _PersonaSheetState extends State<PersonaSheet> {
             maxLines: maxLines,
             decoration: InputDecoration(hintText: hint),
             style: const TextStyle(color: kText, fontSize: 13),
+            onChanged: (_) => setState(() {}),
           ),
           const SizedBox(height: 16),
         ],
@@ -385,15 +502,60 @@ class _PersonaSheetState extends State<PersonaSheet> {
                   style: const TextStyle(color: kText, fontSize: 13),
                 ),
                 const SizedBox(height: 14),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.auto_awesome, size: 16),
-                  label: const Text('Auto-fill from name'),
-                  onPressed: _autofill,
+                // ── AI Persona Wizard ────────────────────────────────────
+                GestureDetector(
+                  onTap: () => setState(() => _wizardExpanded = !_wizardExpanded),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: [kPrimary.withOpacity(0.18), kCyan.withOpacity(0.10)]),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: kPrimary.withOpacity(0.4)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.auto_awesome, size: 16, color: kPrimary),
+                        const SizedBox(width: 8),
+                        const Expanded(child: Text('AI Persona Wizard', style: TextStyle(color: kPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
+                        Icon(_wizardExpanded ? Icons.expand_less : Icons.expand_more, color: kPrimary, size: 18),
+                      ],
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 20),
-                _field('Appearance', _appearance, 'appearance', _genAppearance, hint: 'Height, build, hair, eyes, clothing…'),
-                _field('Personality', _personality, 'personality', _genPersonality, hint: 'How you come across — calm, sarcastic, warm…'),
-                _field('Backstory', _backstory, 'backstory', _genBackstory, hint: 'Background the character should know…'),
+                if (_wizardExpanded) ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _concept,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      hintText: 'Describe yourself in this world… e.g. "tech girl, dry sense of humor, mid-20s, works late nights"',
+                      border: OutlineInputBorder(),
+                    ),
+                    style: const TextStyle(color: kText, fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: _generating['wizard'] == true
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.auto_awesome, size: 16),
+                      label: Text(_generating['wizard'] == true ? 'Generating…' : 'Generate full persona'),
+                      onPressed: _generating['wizard'] == true ? null : _wizardGenerate,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kPrimary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text('Fills appearance, personality, backstory and traits all at once.', style: TextStyle(color: kMuted, fontSize: 11)),
+                ],
+                const SizedBox(height: 12),
+                _field('Appearance', _appearance, 'appearance', _genAppearance, hint: 'Height, build, hair, eyes, clothing…', fieldName: 'appearance'),
+                _field('Personality', _personality, 'personality', _genPersonality, hint: 'How you come across — calm, sarcastic, warm…', fieldName: 'personality'),
+                _field('Backstory', _backstory, 'backstory', _genBackstory, hint: 'Background the character should know…', fieldName: 'backstory'),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

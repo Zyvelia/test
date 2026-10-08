@@ -1,6 +1,7 @@
 // library_screen.dart — character library
 
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -8,6 +9,8 @@ import '../models/models.dart';
 import '../providers/app_provider.dart';
 import '../services/ollama_service.dart';
 import '../theme.dart';
+
+const json_decoder = JsonDecoder();
 
 class LibraryScreen extends StatefulWidget {
   final void Function(Character) onOpenChar;
@@ -299,9 +302,11 @@ class CharacterSheet extends StatefulWidget {
 class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   late final TextEditingController _name, _avatar, _personality, _scenario, _greeting, _examples, _tags, _nsfwDesc, _currencyName, _currencySymbol;
+  late final TextEditingController _concept;
   String _category = 'Original';
   String _visibility = 'Private';
   bool _nsfw = false;
+  bool _wizardExpanded = false;
   final Map<String, bool> _generating = {};
 
   @override
@@ -309,6 +314,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
     final c = widget.character;
+    _concept     = TextEditingController();
     _name        = TextEditingController(text: c?.name ?? '');
     _avatar      = TextEditingController(text: c?.avatar ?? '');
     _personality = TextEditingController(text: c?.personality ?? '');
@@ -327,7 +333,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
   @override
   void dispose() {
     _tabs.dispose();
-    for (final c in [_name, _avatar, _personality, _scenario, _greeting, _examples, _tags, _nsfwDesc, _currencyName, _currencySymbol]) {
+    for (final c in [_concept, _name, _avatar, _personality, _scenario, _greeting, _examples, _tags, _nsfwDesc, _currencyName, _currencySymbol]) {
       c.dispose();
     }
     super.dispose();
@@ -406,6 +412,104 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
     ' Include sexual personality, preferences, and behavior in adult scenarios. Be explicit. Return only the description.',
   );
 
+  // AI Wizard — generates name + all fields from a freeform concept string
+  Future<void> _wizardGenerate() async {
+    final concept = _concept.text.trim();
+    if (concept.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Describe your idea'),
+          content: const Text('Type a short concept in the box above — e.g. "a cold detective who distrusts magic" — then tap Generate.'),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        ),
+      );
+      return;
+    }
+    setState(() => _generating['wizard'] = true);
+    try {
+      // Step 1: generate a structured JSON character brief from the concept
+      final briefPrompt =
+          'You are a character creation assistant. Given the concept below, return a JSON object with these exact keys:\n'
+          '"name" (string), "category" (one of: Original,Anime,Fantasy,Games,Sci-Fi,Historical,Roleplay,Horror,Slice of Life,Other),\n'
+          '"tags" (array of 3-5 short trait strings), "personality" (2-3 paragraphs),\n'
+          '"scenario" (1-2 paragraphs setting the scene), "greeting" (1-4 sentence opening message in CAI style: *action* and plain dialogue),\n'
+          '"examples" (5 dialogue exchanges formatted as "User: ...\\nCharacter: ...\\n\\n").\n'
+          'Return ONLY valid JSON, no markdown fences, no commentary.\n\n'
+          'Concept: $concept\n'
+          'Genre preference: $_category\n'
+          '${_nsfw ? "This character is for adult/explicit content." : ""}';
+
+      final raw = await OllamaService.instance.generate(
+        baseUrl: widget.settings.ollamaUrl,
+        model: widget.settings.model,
+        prompt: briefPrompt,
+      );
+
+      // strip possible markdown fences
+      var clean = raw.trim();
+      clean = clean.replaceAll(RegExp(r'^```(?:json)?\n?|```$', multiLine: true), '').trim();
+
+      try {
+        final j = Map<String, dynamic>.from(
+          json_decoder.convert(clean) as Map,
+        );
+        if (mounted) {
+          setState(() {
+            if ((j['name'] as String?)?.isNotEmpty == true) _name.text = j['name'] as String;
+            final cat = j['category'] as String?;
+            if (cat != null && ['Original','Anime','Fantasy','Games','Sci-Fi','Historical','Roleplay','Horror','Slice of Life','Other'].contains(cat)) {
+              _category = cat;
+            }
+            final tags = j['tags'];
+            if (tags is List) _tags.text = tags.map((t) => t.toString()).join(', ');
+            if ((j['personality'] as String?)?.isNotEmpty == true) _personality.text = j['personality'] as String;
+            if ((j['scenario'] as String?)?.isNotEmpty == true) _scenario.text = j['scenario'] as String;
+            if ((j['greeting'] as String?)?.isNotEmpty == true) _greeting.text = j['greeting'] as String;
+            if ((j['examples'] as String?)?.isNotEmpty == true) _examples.text = j['examples'] as String;
+            _wizardExpanded = false; // collapse wizard after success
+          });
+        }
+      } catch (_) {
+        // JSON parse failed — fall back to filling personality only from raw text
+        if (mounted) setState(() => _personality.text = raw.trim());
+      }
+    } catch (e) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Generation failed'),
+            content: Text(OllamaService.friendlyError(e)),
+            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _generating['wizard'] = false);
+    }
+  }
+
+  // Improve an existing field — rewrites in place rather than replacing
+  Future<void> _improve(String key, TextEditingController ctrl, String fieldName) async {
+    if (ctrl.text.trim().isEmpty) return;
+    setState(() => _generating['${key}_improve'] = true);
+    try {
+      final text = await OllamaService.instance.generate(
+        baseUrl: widget.settings.ollamaUrl,
+        model: widget.settings.model,
+        prompt: 'Improve the following $fieldName for a character named $_nameStr in the $_category genre. '
+                'Make it more vivid, specific, and character-driven. Keep the same core ideas. '
+                'Return only the improved text, no commentary.\n\n${ctrl.text.trim()}',
+      );
+      if (mounted) setState(() => ctrl.text = text);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e')));
+    } finally {
+      if (mounted) setState(() => _generating['${key}_improve'] = false);
+    }
+  }
+
   void _autofillAll() async {
     if (_name.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a name first.')));
@@ -440,16 +544,35 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
     );
   }
 
-  Widget _genBtn(String key, VoidCallback fn) => IconButton(
-    icon: _generating[key] == true
-        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: kPrimary))
-        : const Icon(Icons.auto_awesome, size: 18),
-    onPressed: _generating[key] == true ? null : fn,
-    color: kPrimary,
-    tooltip: 'Generate with AI',
-  );
+  Widget _genBtn(String key, VoidCallback fn, {String tooltip = 'Generate with AI'}) => _generating[key] == true
+      ? const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 8),
+          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: kPrimary)),
+        )
+      : TextButton.icon(
+          icon: const Icon(Icons.auto_awesome, size: 14),
+          label: const Text('Generate', style: TextStyle(fontSize: 12)),
+          style: TextButton.styleFrom(foregroundColor: kPrimary, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          onPressed: fn,
+        );
 
-  Widget _field(String label, TextEditingController ctrl, String key, VoidCallback genFn, {int maxLines = 4, String hint = ''}) {
+  Widget _improveBtn(String key, TextEditingController ctrl, String fieldName) {
+    final improveKey = '${key}_improve';
+    if (ctrl.text.trim().isEmpty) return const SizedBox.shrink();
+    return _generating[improveKey] == true
+        ? const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 8),
+            child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: kCyan)),
+          )
+        : TextButton.icon(
+            icon: const Icon(Icons.edit_note, size: 14),
+            label: const Text('Improve', style: TextStyle(fontSize: 12)),
+            style: TextButton.styleFrom(foregroundColor: kCyan, padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            onPressed: () => _improve(key, ctrl, fieldName),
+          );
+  }
+
+  Widget _field(String label, TextEditingController ctrl, String key, VoidCallback genFn, {int maxLines = 4, String hint = '', String fieldName = ''}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -457,6 +580,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
           children: [
             Text(label, style: const TextStyle(color: kMuted, fontSize: 12, fontWeight: FontWeight.w500)),
             const Spacer(),
+            _improveBtn(key, ctrl, fieldName.isEmpty ? label.toLowerCase() : fieldName),
             _genBtn(key, genFn),
           ],
         ),
@@ -467,6 +591,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
           scrollPadding: const EdgeInsets.only(bottom: 120),
           decoration: InputDecoration(hintText: hint),
           style: const TextStyle(color: kText, fontSize: 13),
+          onChanged: (_) => setState(() {}), // refresh improve btn visibility
         ),
         const SizedBox(height: 16),
       ],
@@ -548,18 +673,65 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
                           style: const TextStyle(color: kText, fontSize: 13),
                         ),
                         const SizedBox(height: 14),
-                        OutlinedButton.icon(
-                          icon: const Icon(Icons.auto_awesome, size: 16),
-                          label: const Text('Auto-fill all fields'),
-                          onPressed: _autofillAll,
+                        // ── AI Wizard ───────────────────────────────────────
+                        GestureDetector(
+                          onTap: () => setState(() => _wizardExpanded = !_wizardExpanded),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: [kPrimary.withOpacity(0.18), kCyan.withOpacity(0.10)]),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: kPrimary.withOpacity(0.4)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.auto_awesome, size: 16, color: kPrimary),
+                                const SizedBox(width: 8),
+                                const Expanded(child: Text('AI Character Wizard', style: TextStyle(color: kPrimary, fontWeight: FontWeight.w600, fontSize: 13))),
+                                Icon(_wizardExpanded ? Icons.expand_less : Icons.expand_more, color: kPrimary, size: 18),
+                              ],
+                            ),
+                          ),
                         ),
-                        const SizedBox(height: 20),
+                        if (_wizardExpanded) ...[
+                          const SizedBox(height: 10),
+                          TextField(
+                            controller: _concept,
+                            maxLines: 3,
+                            scrollPadding: const EdgeInsets.only(bottom: 120),
+                            decoration: const InputDecoration(
+                              hintText: 'Describe your idea… e.g. "a cold detective who distrusts magic and hides a dark past"',
+                              border: OutlineInputBorder(),
+                            ),
+                            style: const TextStyle(color: kText, fontSize: 13),
+                          ),
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              icon: _generating['wizard'] == true
+                                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.auto_awesome, size: 16),
+                              label: Text(_generating['wizard'] == true ? 'Generating…' : 'Generate full character'),
+                              onPressed: _generating['wizard'] == true ? null : _wizardGenerate,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: kPrimary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          const Text('Fills name, personality, scenario, greeting, examples and tags all at once.', style: TextStyle(color: kMuted, fontSize: 11)),
+                        ],
+                        const SizedBox(height: 12),
+                        // ── legacy per-field buttons ─────────────────────────
                         _field('Personality *', _personality, 'personality', _genPersonality, maxLines: 6,
-                          hint: 'Personality, speech style, mannerisms, core traits…'),
+                          hint: 'Personality, speech style, mannerisms, core traits…', fieldName: 'personality'),
                         _field('Scenario', _scenario, 'scenario', _genScenario, maxLines: 4,
-                          hint: 'Setting, world, situation context…'),
+                          hint: 'Setting, world, situation context…', fieldName: 'scenario'),
                         _field('Greeting', _greeting, 'greeting', _genGreeting, maxLines: 3,
-                          hint: 'First message the character sends…'),
+                          hint: 'First message the character sends…', fieldName: 'greeting'),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -582,7 +754,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
                       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       children: [
                         _field('Example exchanges', _examples, 'examples', _genExamples, maxLines: 8,
-                          hint: 'Example dialogue showing the character\'s voice…'),
+                          hint: 'Example dialogue showing the character\'s voice…', fieldName: 'example exchanges'),
                         _dropdownRow('Visibility', _visibility, ['Private','Public'],
                           (v) => setState(() => _visibility = v)),
                         const SizedBox(height: 20),
