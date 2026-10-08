@@ -298,7 +298,7 @@ class CharacterSheet extends StatefulWidget {
 
 class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  late final TextEditingController _name, _avatar, _personality, _scenario, _greeting, _examples, _tags, _nsfwDesc;
+  late final TextEditingController _name, _avatar, _personality, _scenario, _greeting, _examples, _tags, _nsfwDesc, _currencyName, _currencySymbol;
   String _category = 'Original';
   String _visibility = 'Private';
   bool _nsfw = false;
@@ -316,7 +316,9 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
     _greeting    = TextEditingController(text: c?.greeting ?? '');
     _examples    = TextEditingController(text: c?.examples ?? '');
     _tags        = TextEditingController(text: c?.tags.join(', ') ?? '');
-    _nsfwDesc    = TextEditingController(text: c?.nsfwDescription ?? '');
+    _nsfwDesc       = TextEditingController(text: c?.nsfwDescription ?? '');
+    _currencyName   = TextEditingController(text: c?.currencyName ?? '');
+    _currencySymbol = TextEditingController(text: c?.currencySymbol ?? '');
     _category    = c?.category ?? 'Original';
     _visibility  = c?.visibility ?? 'Private';
     _nsfw        = c?.nsfw ?? false;
@@ -325,7 +327,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
   @override
   void dispose() {
     _tabs.dispose();
-    for (final c in [_name, _avatar, _personality, _scenario, _greeting, _examples, _tags, _nsfwDesc]) {
+    for (final c in [_name, _avatar, _personality, _scenario, _greeting, _examples, _tags, _nsfwDesc, _currencyName, _currencySymbol]) {
       c.dispose();
     }
     super.dispose();
@@ -433,6 +435,8 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
       visibility: _visibility,
       nsfw: _nsfw,
       nsfwDescription: _nsfwDesc.text.trim(),
+      currencyName:   _currencyName.text.trim(),
+      currencySymbol: _currencySymbol.text.trim(),
     );
   }
 
@@ -460,6 +464,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
         TextField(
           controller: ctrl,
           maxLines: maxLines,
+          scrollPadding: const EdgeInsets.only(bottom: 120),
           decoration: InputDecoration(hintText: hint),
           style: const TextStyle(color: kText, fontSize: 13),
         ),
@@ -471,127 +476,161 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
   @override
   Widget build(BuildContext context) {
     final isEdit = widget.character != null;
+    final keyboardH = MediaQuery.of(context).viewInsets.bottom;
     return DraggableScrollableSheet(
       initialChildSize: 0.92,
       minChildSize: 0.5,
       maxChildSize: 0.97,
       expand: false,
-      builder: (_, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: kSurface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: Column(
-          children: [
-            const SizedBox(height: 8),
-            Container(width: 36, height: 4, decoration: BoxDecoration(color: kBorder, borderRadius: BorderRadius.circular(2))),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
-              child: Row(
-                children: [
-                  Text(isEdit ? 'Edit Character' : 'New Character',
-                      style: const TextStyle(color: kText, fontWeight: FontWeight.w700, fontSize: 17)),
-                  const Spacer(),
-                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-                  const SizedBox(width: 4),
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context, _buildCharacter()),
-                    child: const Text('Save'),
-                  ),
-                ],
+      builder: (_, __) => Padding(
+        padding: EdgeInsets.only(bottom: keyboardH),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: kSurface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+          ),
+          child: Column(
+            children: [
+              const SizedBox(height: 8),
+              Container(width: 36, height: 4, decoration: BoxDecoration(color: kBorder, borderRadius: BorderRadius.circular(2))),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 8, 0),
+                child: Row(
+                  children: [
+                    Text(isEdit ? 'Edit Character' : 'New Character',
+                        style: const TextStyle(color: kText, fontWeight: FontWeight.w700, fontSize: 17)),
+                    const Spacer(),
+                    TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+                    const SizedBox(width: 4),
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, _buildCharacter()),
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            TabBar(
-              controller: _tabs,
-              tabs: const [Tab(text: 'Core'), Tab(text: 'Advanced / 18+')],
-              labelColor: kPrimary,
-              unselectedLabelColor: kMuted,
-              indicatorColor: kPrimary,
-              dividerColor: kBorder,
-            ),
-            Expanded(
-              child: TabBarView(
+              TabBar(
                 controller: _tabs,
-                children: [
-                  // Core tab
-                  ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                    children: [
-                      TextField(
-                        controller: _name,
-                        decoration: const InputDecoration(labelText: 'Name *'),
-                        style: const TextStyle(color: kText),
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        children: [
-                          Expanded(child: _dropdownRow('Category', _category,
-                            ['Original','Anime','Fantasy','Games','Sci-Fi','Historical','Roleplay','Horror','Slice of Life','Other'],
-                            (v) => setState(() => _category = v))),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      TextField(
-                        controller: _avatar,
-                        decoration: const InputDecoration(labelText: 'Avatar path (optional)'),
-                        style: const TextStyle(color: kText, fontSize: 13),
-                      ),
-                      const SizedBox(height: 14),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.auto_awesome, size: 16),
-                        label: const Text('Auto-fill all fields'),
-                        onPressed: _autofillAll,
-                      ),
-                      const SizedBox(height: 20),
-                      _field('Personality *', _personality, 'personality', _genPersonality, maxLines: 6,
-                        hint: 'Personality, speech style, mannerisms, core traits…'),
-                      _field('Scenario', _scenario, 'scenario', _genScenario, maxLines: 4,
-                        hint: 'Setting, world, situation context…'),
-                      _field('Greeting', _greeting, 'greeting', _genGreeting, maxLines: 3,
-                        hint: 'First message the character sends…'),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Tags', style: TextStyle(color: kMuted, fontSize: 12, fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 4),
-                          TextField(
-                            controller: _tags,
-                            decoration: const InputDecoration(hintText: 'e.g. tsundere, warrior, mentor (comma-separated)'),
-                            style: const TextStyle(color: kText, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  // Advanced tab
-                  ListView(
-                    controller: scrollController,
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                    children: [
-                      _field('Example exchanges', _examples, 'examples', _genExamples, maxLines: 8,
-                        hint: 'Example dialogue showing the character\'s voice…'),
-                      _dropdownRow('Visibility', _visibility, ['Private','Public'],
-                        (v) => setState(() => _visibility = v)),
-                      const SizedBox(height: 20),
-                      SwitchListTile(
-                        title: const Text('Enable 18+ / NSFW', style: TextStyle(color: kText)),
-                        subtitle: const Text('Explicit content enabled for this character', style: TextStyle(color: kMuted, fontSize: 12)),
-                        value: _nsfw,
-                        onChanged: (v) => setState(() => _nsfw = v),
-                        activeColor: kPrimary,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      const SizedBox(height: 12),
-                      if (_nsfw)
-                        _field('NSFW context', _nsfwDesc, 'nsfw', _genNsfw, maxLines: 6,
-                          hint: 'Explicit personality, kinks, adult scenario details…'),
-                    ],
-                  ),
-                ],
+                tabs: const [Tab(text: 'Core'), Tab(text: 'Advanced / 18+')],
+                labelColor: kPrimary,
+                unselectedLabelColor: kMuted,
+                indicatorColor: kPrimary,
+                dividerColor: kBorder,
               ),
-            ),
-          ],
+              Expanded(
+                child: TabBarView(
+                  controller: _tabs,
+                  children: [
+                    // Core tab — own scroll controller, keyboard-aware
+                    ListView(
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, keyboardH > 0 ? 16 : 32),
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      children: [
+                        TextField(
+                          controller: _name,
+                          scrollPadding: const EdgeInsets.only(bottom: 120),
+                          decoration: const InputDecoration(labelText: 'Name *'),
+                          style: const TextStyle(color: kText),
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(child: _dropdownRow('Category', _category,
+                              ['Original','Anime','Fantasy','Games','Sci-Fi','Historical','Roleplay','Horror','Slice of Life','Other'],
+                              (v) => setState(() => _category = v))),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _avatar,
+                          scrollPadding: const EdgeInsets.only(bottom: 120),
+                          decoration: const InputDecoration(labelText: 'Avatar path (optional)'),
+                          style: const TextStyle(color: kText, fontSize: 13),
+                        ),
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.auto_awesome, size: 16),
+                          label: const Text('Auto-fill all fields'),
+                          onPressed: _autofillAll,
+                        ),
+                        const SizedBox(height: 20),
+                        _field('Personality *', _personality, 'personality', _genPersonality, maxLines: 6,
+                          hint: 'Personality, speech style, mannerisms, core traits…'),
+                        _field('Scenario', _scenario, 'scenario', _genScenario, maxLines: 4,
+                          hint: 'Setting, world, situation context…'),
+                        _field('Greeting', _greeting, 'greeting', _genGreeting, maxLines: 3,
+                          hint: 'First message the character sends…'),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Tags', style: TextStyle(color: kMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+                            const SizedBox(height: 4),
+                            TextField(
+                              controller: _tags,
+                              scrollPadding: const EdgeInsets.only(bottom: 120),
+                              decoration: const InputDecoration(hintText: 'e.g. tsundere, warrior, mentor (comma-separated)'),
+                              style: const TextStyle(color: kText, fontSize: 13),
+                            ),
+                            const SizedBox(height: 32),
+                          ],
+                        ),
+                      ],
+                    ),
+                    // Advanced tab — own scroll controller
+                    ListView(
+                      padding: EdgeInsets.fromLTRB(20, 16, 20, keyboardH > 0 ? 16 : 32),
+                      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                      children: [
+                        _field('Example exchanges', _examples, 'examples', _genExamples, maxLines: 8,
+                          hint: 'Example dialogue showing the character\'s voice…'),
+                        _dropdownRow('Visibility', _visibility, ['Private','Public'],
+                          (v) => setState(() => _visibility = v)),
+                        const SizedBox(height: 20),
+                        const Text('Currency (leave blank — AI picks from the world)',
+                            style: TextStyle(color: kMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller: _currencyName,
+                              scrollPadding: const EdgeInsets.only(bottom: 120),
+                              decoration: const InputDecoration(hintText: 'Name — e.g. gold, credits', isDense: true),
+                              style: const TextStyle(color: kText, fontSize: 13),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 1,
+                            child: TextField(
+                              controller: _currencySymbol,
+                              scrollPadding: const EdgeInsets.only(bottom: 120),
+                              decoration: const InputDecoration(hintText: 'Symbol', isDense: true),
+                              style: const TextStyle(color: kText, fontSize: 13),
+                            ),
+                          ),
+                        ]),
+                        const SizedBox(height: 20),
+                        SwitchListTile(
+                          title: const Text('Enable 18+ / NSFW', style: TextStyle(color: kText)),
+                          subtitle: const Text('Explicit content enabled for this character', style: TextStyle(color: kMuted, fontSize: 12)),
+                          value: _nsfw,
+                          onChanged: (v) => setState(() => _nsfw = v),
+                          activeColor: kPrimary,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        const SizedBox(height: 12),
+                        if (_nsfw)
+                          _field('NSFW context', _nsfwDesc, 'nsfw', _genNsfw, maxLines: 6,
+                            hint: 'Explicit personality, kinks, adult scenario details…'),
+                        const SizedBox(height: 32),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

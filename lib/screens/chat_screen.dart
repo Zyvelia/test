@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/models.dart';
 import '../providers/app_provider.dart';
@@ -64,6 +65,8 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _showMemory = false;
   List<String> _memFacts = [];
   String? _loadedCharId;
+  SessionWallet? _wallet;
+  bool _showWallet = false;
 
   @override
   void dispose() {
@@ -82,6 +85,13 @@ class _ChatScreenState extends State<ChatScreen> {
       store.saveChat(c.id, history);
     }
     _memFacts = store.loadMemory(c.id);
+    // init fresh wallet each session load
+    final cname = c.currencyName.trim();
+    final csym  = c.currencySymbol.trim();
+    _wallet = SessionWallet(
+      currencyName:   cname.isNotEmpty ? cname : 'gold',
+      currencySymbol: csym.isNotEmpty  ? csym  : '🪙',
+    );
     setState(() { _history = history; });
     _scrollBottom();
   }
@@ -103,6 +113,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (c == null || _input.text.trim().isEmpty || _streaming) return;
     final userMsg = _input.text.trim();
     _input.clear();
+    if (context.read<AppProvider>().settings.hapticOnSend) {
+      HapticFeedback.lightImpact();
+    }
     _history.add(ChatMessage(role: 'user', content: userMsg));
     StorageService.instance.saveChat(c.id, _history);
     await _generate(extractAfter: true);
@@ -133,8 +146,26 @@ class _ChatScreenState extends State<ChatScreen> {
     final ctx = _history.length > s.contextWindow
         ? _history.sublist(_history.length - s.contextWindow)
         : _history;
+
+    // silent wallet context injected as a system message — not shown to user
+    final walletCtx = _wallet != null
+        ? '<<WALLET_CONTEXT>>\n'
+          'Currency: ${_wallet!.currencyName} (${_wallet!.currencySymbol})\n'
+          '${c.name} balance: ${_wallet!.charBalance} ${_wallet!.currencyName}\n'
+          'User balance: ${_wallet!.userBalance} ${_wallet!.currencyName}\n'
+          'To move money silently embed tags in your reply (stripped before display):\n'
+          '  [EARN:N:reason]       — user earns N\n'
+          '  [SPEND:N:reason]      — user spends N\n'
+          '  [CHAR_EARN:N:reason]  — ${c.name} earns N\n'
+          '  [CHAR_SPEND:N:reason] — ${c.name} spends N\n'
+          'Use them naturally when the story calls for it. Never mention the tags.\n'
+          'If currency name/symbol are not yet defined, pick ones fitting the world and use them consistently.\n'
+          '<<END_WALLET_CONTEXT>>'
+        : '';
+
     final messages = [
       {'role': 'system', 'content': systemPrompt},
+      if (walletCtx.isNotEmpty) {'role': 'system', 'content': walletCtx},
       ...ctx.map((m) => {'role': m.role, 'content': m.content}),
     ];
 
@@ -143,13 +174,16 @@ class _ChatScreenState extends State<ChatScreen> {
         baseUrl: s.ollamaUrl,
         model: s.model,
         messages: messages,
+        maxReplyTokens: s.maxReplyTokens,
       )) {
         if (!mounted) return;
         setState(() => _streamingText += chunk);
         _scrollBottom();
       }
 
-      final response = _streamingText.trim();
+      final raw = _streamingText.trim();
+      // parse and strip silent wallet tags before displaying
+      final response = _parseWalletTags(raw);
       if (response.isEmpty) {
         throw Exception('The model returned an empty reply. Try again, or pick a different model in Settings.');
       }
@@ -197,6 +231,34 @@ class _ChatScreenState extends State<ChatScreen> {
         ],
       ),
     );
+  }
+
+  // Strips [EARN:N:label], [SPEND:N:label], [CHAR_EARN:N:label], [CHAR_SPEND:N:label]
+  // from AI output silently and applies them to the wallet.
+  // label is optional. owner defaults to 'user' for EARN/SPEND, 'char' for CHAR_*.
+  String _parseWalletTags(String text) {
+    if (_wallet == null) return text;
+    final pattern = RegExp(
+      r'\[(EARN|SPEND|CHAR_EARN|CHAR_SPEND):(\d+)(?::([^\]]*))?\]',
+      caseSensitive: false,
+    );
+    final result = text.replaceAllMapped(pattern, (m) {
+      final tag    = m.group(1)!.toUpperCase();
+      final amount = int.tryParse(m.group(2) ?? '0') ?? 0;
+      final label  = m.group(3) ?? '';
+      final owner  = tag.startsWith('CHAR') ? 'char' : 'user';
+      final delta  = (tag == 'SPEND' || tag == 'CHAR_SPEND') ? -amount : amount;
+      _wallet!.apply(WalletEntry(
+        time: DateTime.now(),
+        owner: owner,
+        amount: delta,
+        label: label,
+      ));
+      return ''; // strip from visible text
+    });
+    // rebuild setState so wallet UI updates
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) setState(() {}); });
+    return result.trim();
   }
 
   void _extractMemory() async {
@@ -352,6 +414,12 @@ class _ChatScreenState extends State<ChatScreen> {
             tooltip: 'Appearance',
           ),
           IconButton(
+            icon: Icon(_showWallet ? Icons.account_balance_wallet : Icons.account_balance_wallet_outlined),
+            onPressed: c == null ? null : () => setState(() => _showWallet = !_showWallet),
+            color: _showWallet ? kAmber : kMuted,
+            tooltip: 'Wallet',
+          ),
+          IconButton(
             icon: Icon(_showMemory ? Icons.psychology : Icons.psychology_outlined),
             onPressed: c == null ? null : () => setState(() => _showMemory = !_showMemory),
             color: _showMemory ? kPrimary : kMuted,
@@ -426,6 +494,15 @@ class _ChatScreenState extends State<ChatScreen> {
                               onChanged: () => setState(() {
                                 _memFacts = StorageService.instance.loadMemory(c.id);
                               }),
+                            ),
+                          ),
+                        if (_showWallet && _wallet != null)
+                          Positioned(
+                            top: 0, bottom: 0, right: 0,
+                            child: _WalletPanel(
+                              wallet: _wallet!,
+                              charName: c.name,
+                              onManualEntry: (entry) => setState(() => _wallet!.apply(entry)),
                             ),
                           ),
                       ],
@@ -661,29 +738,115 @@ class _CaiText extends StatelessWidget {
       );
 }
 
-class _TypingIndicator extends StatelessWidget {
+// ── emotion phrases derived from character tags / personality ─────────────────
+List<String> _emotionPhrases(Character char) {
+  final tags = char.tags.map((t) => t.toLowerCase()).toSet();
+  final pers = char.personality.toLowerCase();
+
+  // build a pool from tag and personality signals — stays in-world, no AI tells
+  final pool = <String>[];
+
+  if (tags.contains('shy') || pers.contains('shy') || pers.contains('timid')) {
+    pool.addAll(['fidgets quietly', 'glances away', 'takes a breath']);
+  }
+  if (tags.contains('flirty') || pers.contains('flirt') || pers.contains('seductive')) {
+    pool.addAll(['smiles to herself', 'tilts her head', 'lets the silence stretch']);
+  }
+  if (tags.contains('cold') || tags.contains('stoic') || pers.contains('stoic') || pers.contains('cold')) {
+    pool.addAll(['stares ahead', 'says nothing yet', 'waits']);
+  }
+  if (tags.contains('cheerful') || tags.contains('energetic') || pers.contains('cheerful') || pers.contains('energetic')) {
+    pool.addAll(['practically bouncing', 'eyes light up', 'grins']);
+  }
+  if (tags.contains('serious') || pers.contains('serious') || pers.contains('stern')) {
+    pool.addAll(['considers carefully', 'weighs the words', 'pauses']);
+  }
+  if (tags.contains('villain') || tags.contains('dark') || pers.contains('villain') || pers.contains('cruel')) {
+    pool.addAll(['a slow smile', 'lets it linger', 'tilts her head slowly']);
+  }
+  if (tags.contains('caring') || tags.contains('nurturing') || pers.contains('caring') || pers.contains('warm')) {
+    pool.addAll(['thinks it over', 'softens', 'nods slowly']);
+  }
+  if (tags.contains('tsundere') || pers.contains('tsundere')) {
+    pool.addAll(['crosses her arms', 'looks away', 'huffs quietly']);
+  }
+  if (tags.contains('wise') || tags.contains('mentor') || pers.contains('wise') || pers.contains('mentor')) {
+    pool.addAll(['lets the silence speak', 'chooses her words', 'pauses in thought']);
+  }
+  if (tags.contains('playful') || pers.contains('playful') || pers.contains('mischiev')) {
+    pool.addAll(['a little smirk', 'half a laugh', 'eyes dancing']);
+  }
+
+  // generic fallback — always in-world
+  if (pool.isEmpty) {
+    pool.addAll(['thinking', 'a moment passes', 'takes a breath', 'pauses']);
+  }
+
+  return pool;
+}
+
+class _TypingIndicator extends StatefulWidget {
   final Character char;
   const _TypingIndicator({required this.char});
+  @override
+  State<_TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<_TypingIndicator> {
+  late String _phrase;
+  late final List<String> _pool;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Row(
-          children: [
-            CharAvatar(name: char.name, path: char.avatar, size: 30, radius: 10),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              decoration: BoxDecoration(
-                color: kBubbleChar,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: kBorder, width: 0.8),
+  void initState() {
+    super.initState();
+    _pool = _emotionPhrases(widget.char);
+    _pool.shuffle();
+    _phrase = _pool.first;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final acc = accentFor(widget.char.name);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          CharAvatar(name: widget.char.name, path: widget.char.avatar, size: 30, radius: 10),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: BoxDecoration(
+              color: kBubbleChar,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(18),
+                topRight: Radius.circular(18),
+                bottomLeft: Radius.circular(5),
+                bottomRight: Radius.circular(18),
               ),
-              child: const _Dots(),
+              border: Border.all(color: kBorder, width: 0.8),
             ),
-          ],
-        ),
-      );
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _phrase,
+                  style: TextStyle(
+                    color: acc.first.withOpacity(0.75),
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const _Dots(),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Dots extends StatefulWidget {
@@ -711,9 +874,9 @@ class _DotsState extends State<_Dots> with SingleTickerProviderStateMixin {
               offset: Offset(0, y),
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 2.5),
-                width: 7, height: 7,
+                width: 6, height: 6,
                 decoration: BoxDecoration(
-                  color: kMuted.withOpacity(0.5 + 0.5 * (1 - (2 * t - 1).abs())),
+                  color: kMuted.withOpacity(0.4 + 0.55 * (1 - (2 * t - 1).abs())),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -1476,4 +1639,201 @@ class _HistorySheetState extends State<_HistorySheet> {
       ),
     );
   }
+}
+
+// ── Wallet Panel ──────────────────────────────────────────────────────────────
+
+class _WalletPanel extends StatefulWidget {
+  final SessionWallet wallet;
+  final String charName;
+  final void Function(WalletEntry) onManualEntry;
+  const _WalletPanel({required this.wallet, required this.charName, required this.onManualEntry});
+  @override
+  State<_WalletPanel> createState() => _WalletPanelState();
+}
+
+class _WalletPanelState extends State<_WalletPanel> {
+  final _amtCtrl   = TextEditingController();
+  final _labelCtrl = TextEditingController();
+  String _owner = 'user';
+  bool   _earn  = true;
+
+  @override
+  void dispose() { _amtCtrl.dispose(); _labelCtrl.dispose(); super.dispose(); }
+
+  void _submit() {
+    final amt = int.tryParse(_amtCtrl.text.trim()) ?? 0;
+    if (amt <= 0) return;
+    widget.onManualEntry(WalletEntry(
+      time:   DateTime.now(),
+      owner:  _owner,
+      amount: _earn ? amt : -amt,
+      label:  _labelCtrl.text.trim(),
+    ));
+    _amtCtrl.clear();
+    _labelCtrl.clear();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w      = widget.wallet;
+    final sym    = w.currencySymbol;
+    final recent = w.ledger.reversed.take(20).toList();
+    return Container(
+      width: 260,
+      decoration: BoxDecoration(
+        color: kCard,
+        border: Border(left: BorderSide(color: kBorder)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+            child: Text('Wallet', style: const TextStyle(color: kText, fontWeight: FontWeight.w700, fontSize: 15)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Row(children: [
+              Expanded(child: _BalanceTile(label: 'You',          balance: w.userBalance, sym: sym)),
+              const SizedBox(width: 8),
+              Expanded(child: _BalanceTile(label: widget.charName, balance: w.charBalance, sym: sym)),
+            ]),
+          ),
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: kBorder),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+            child: Text('Manual', style: const TextStyle(color: kMuted, fontSize: 11)),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: Column(children: [
+              Row(children: [
+                Expanded(
+                  child: SegmentedButton<String>(
+                    segments: [
+                      ButtonSegment(value: 'user', label: Text('You',                                   style: const TextStyle(fontSize: 11))),
+                      ButtonSegment(value: 'char', label: Text(widget.charName.split(' ').first, style: const TextStyle(fontSize: 11))),
+                    ],
+                    selected: {_owner},
+                    onSelectionChanged: (s) => setState(() => _owner = s.first),
+                    style: ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(
+                  child: SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(value: true,  label: Text('Earn',  style: TextStyle(fontSize: 11))),
+                      ButtonSegment(value: false, label: Text('Spend', style: TextStyle(fontSize: 11))),
+                    ],
+                    selected: {_earn},
+                    onSelectionChanged: (s) => setState(() => _earn = s.first),
+                    style: ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(
+                  child: TextField(
+                    controller: _amtCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(hintText: 'Amount', isDense: true, prefixText: '$sym '),
+                    style: const TextStyle(color: kText, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: TextField(
+                    controller: _labelCtrl,
+                    decoration: const InputDecoration(hintText: 'Label', isDense: true),
+                    style: const TextStyle(color: kText, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                IconButton(
+                  icon: const Icon(Icons.check_rounded, size: 18),
+                  onPressed: _submit,
+                  color: kPrimary,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ]),
+            ]),
+          ),
+          const SizedBox(height: 8),
+          const Divider(height: 1, color: kBorder),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+            child: Text('Ledger', style: const TextStyle(color: kMuted, fontSize: 11)),
+          ),
+          Expanded(
+            child: recent.isEmpty
+                ? const Center(child: Text('No transactions yet', style: TextStyle(color: kMuted, fontSize: 12)))
+                : ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 16),
+                    itemCount: recent.length,
+                    itemBuilder: (_, i) {
+                      final e    = recent[i];
+                      final plus = e.amount >= 0;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(children: [
+                          Icon(plus ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+                              size: 12, color: plus ? Colors.greenAccent : Colors.redAccent),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              '${e.owner == 'user' ? 'You' : widget.charName.split(' ').first}'
+                              '${e.label.isNotEmpty ? ' · ${e.label}' : ''}',
+                              style: const TextStyle(color: kText, fontSize: 11),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Text(
+                            '${plus ? '+' : ''}${e.amount} $sym',
+                            style: TextStyle(
+                              color: plus ? Colors.greenAccent : Colors.redAccent,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ]),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BalanceTile extends StatelessWidget {
+  final String label;
+  final int    balance;
+  final String sym;
+  const _BalanceTile({required this.label, required this.balance, required this.sym});
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+    decoration: BoxDecoration(
+      color: kSurface,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: kBorder),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,         style: const TextStyle(color: kMuted, fontSize: 10)),
+        const SizedBox(height: 2),
+        Text('$sym $balance', style: const TextStyle(color: kText, fontWeight: FontWeight.w700, fontSize: 14)),
+      ],
+    ),
+  );
 }

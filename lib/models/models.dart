@@ -17,6 +17,8 @@ class Character {
   final String visibility;
   final bool nsfw;
   final String nsfwDescription;
+  final String currencyName;   // e.g. "gold", "credits" — blank = AI picks
+  final String currencySymbol; // e.g. "🪙", "₵", "G" — blank = AI picks
 
   Character({
     required this.id,
@@ -31,6 +33,8 @@ class Character {
     this.visibility = 'Private',
     this.nsfw = false,
     this.nsfwDescription = '',
+    this.currencyName = '',
+    this.currencySymbol = '',
   });
 
   factory Character.fromJson(Map<String, dynamic> j) => Character(
@@ -46,6 +50,8 @@ class Character {
         visibility: j['visibility'] ?? 'Private',
         nsfw: j['nsfw'] ?? false,
         nsfwDescription: j['nsfw_description'] ?? '',
+        currencyName: j['currency_name'] ?? '',
+        currencySymbol: j['currency_symbol'] ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -61,6 +67,8 @@ class Character {
         'visibility': visibility,
         'nsfw': nsfw,
         'nsfw_description': nsfwDescription,
+        'currency_name': currencyName,
+        'currency_symbol': currencySymbol,
       };
 
   Character copyWith({
@@ -76,6 +84,8 @@ class Character {
     String? visibility,
     bool? nsfw,
     String? nsfwDescription,
+    String? currencyName,
+    String? currencySymbol,
   }) =>
       Character(
         id: id ?? this.id,
@@ -90,6 +100,8 @@ class Character {
         visibility: visibility ?? this.visibility,
         nsfw: nsfw ?? this.nsfw,
         nsfwDescription: nsfwDescription ?? this.nsfwDescription,
+        currencyName: currencyName ?? this.currencyName,
+        currencySymbol: currencySymbol ?? this.currencySymbol,
       );
 }
 
@@ -207,6 +219,74 @@ class ChatSession {
       };
 }
 
+// ── Wallet ────────────────────────────────────────────────────────────────────
+
+class WalletEntry {
+  final DateTime time;
+  final String owner;   // 'user' | 'char'
+  final int amount;     // positive = earn, negative = spend
+  final String label;   // e.g. "bread", "salary", ""
+
+  WalletEntry({required this.time, required this.owner, required this.amount, this.label = ''});
+
+  factory WalletEntry.fromJson(Map<String, dynamic> j) => WalletEntry(
+        time: DateTime.tryParse(j['time'] ?? '') ?? DateTime.now(),
+        owner: j['owner'] ?? 'user',
+        amount: j['amount'] ?? 0,
+        label: j['label'] ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'time': time.toIso8601String(),
+        'owner': owner,
+        'amount': amount,
+        'label': label,
+      };
+}
+
+class SessionWallet {
+  int userBalance;
+  int charBalance;
+  String currencyName;
+  String currencySymbol;
+  final List<WalletEntry> ledger;
+
+  SessionWallet({
+    this.userBalance = 0,
+    this.charBalance = 0,
+    this.currencyName = 'gold',
+    this.currencySymbol = '🪙',
+    List<WalletEntry>? ledger,
+  }) : ledger = ledger ?? [];
+
+  void apply(WalletEntry e) {
+    ledger.add(e);
+    if (e.owner == 'user') {
+      userBalance += e.amount;
+    } else {
+      charBalance += e.amount;
+    }
+  }
+
+  Map<String, dynamic> toJson() => {
+        'user_balance': userBalance,
+        'char_balance': charBalance,
+        'currency_name': currencyName,
+        'currency_symbol': currencySymbol,
+        'ledger': ledger.map((e) => e.toJson()).toList(),
+      };
+
+  factory SessionWallet.fromJson(Map<String, dynamic> j) => SessionWallet(
+        userBalance: j['user_balance'] ?? 0,
+        charBalance: j['char_balance'] ?? 0,
+        currencyName: j['currency_name'] ?? 'gold',
+        currencySymbol: j['currency_symbol'] ?? '🪙',
+        ledger: (j['ledger'] as List<dynamic>? ?? [])
+            .map((e) => WalletEntry.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}
+
 // ── ChatAppearance ────────────────────────────────────────────────────────────
 
 enum BubbleStyle { rounded, sharp, minimal }
@@ -275,6 +355,8 @@ class AppSettings {
   final String activePersonaId;
   final int contextWindow;
   final String responseStyle; // concise | balanced | verbose
+  final int maxReplyTokens;   // num_predict cap: 50–1000
+  final bool hapticOnSend;
   final ChatAppearance appearance;
 
   const AppSettings({
@@ -285,6 +367,8 @@ class AppSettings {
     this.activePersonaId = '',
     this.contextWindow = 40,
     this.responseStyle = 'balanced',
+    this.maxReplyTokens = 300,
+    this.hapticOnSend = true,
     this.appearance = const ChatAppearance(),
   });
 
@@ -296,6 +380,8 @@ class AppSettings {
         activePersonaId: j['active_persona_id'] ?? '',
         contextWindow: j['context_window'] ?? 40,
         responseStyle: j['response_style'] ?? 'balanced',
+        maxReplyTokens: j['max_reply_tokens'] ?? 300,
+        hapticOnSend: j['haptic_on_send'] ?? true,
         appearance: j['appearance'] != null
             ? ChatAppearance.fromJson(j['appearance'] as Map<String, dynamic>)
             : const ChatAppearance(),
@@ -309,6 +395,8 @@ class AppSettings {
         'active_persona_id': activePersonaId,
         'context_window': contextWindow,
         'response_style': responseStyle,
+        'max_reply_tokens': maxReplyTokens,
+        'haptic_on_send': hapticOnSend,
         'appearance': appearance.toJson(),
       };
 
@@ -320,6 +408,8 @@ class AppSettings {
     String? activePersonaId,
     int? contextWindow,
     String? responseStyle,
+    int? maxReplyTokens,
+    bool? hapticOnSend,
     ChatAppearance? appearance,
   }) =>
       AppSettings(
@@ -330,6 +420,8 @@ class AppSettings {
         activePersonaId: activePersonaId ?? this.activePersonaId,
         contextWindow: contextWindow ?? this.contextWindow,
         responseStyle: responseStyle ?? this.responseStyle,
+        maxReplyTokens: maxReplyTokens ?? this.maxReplyTokens,
+        hapticOnSend: hapticOnSend ?? this.hapticOnSend,
         appearance: appearance ?? this.appearance,
       );
 }

@@ -23,6 +23,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _persona  = TextEditingController();
   String _style   = 'balanced';
   double _ctx     = 40;
+  double _maxReply = 300;
+  bool _haptic = true;
   String _modelHint = '';
   bool _fetching  = false;
   bool _testing   = false;
@@ -40,6 +42,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _persona.text  = s.userPersona;
     _style         = s.responseStyle;
     _ctx           = s.contextWindow.toDouble();
+    _maxReply      = s.maxReplyTokens.toDouble();
+    _haptic        = s.hapticOnSend;
   }
 
   @override
@@ -93,6 +97,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       userPersona: _persona.text.trim(),
       responseStyle: _style,
       contextWindow: _ctx.round(),
+      maxReplyTokens: _maxReply.round(),
+      hapticOnSend: _haptic,
       activePersonaId: ap.settings.activePersonaId,
       appearance: ap.settings.appearance,
     ));
@@ -351,6 +357,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 label: '${_ctx.round()}',
                 onChanged: (v) => setState(() => _ctx = v),
                 activeColor: kPrimary,
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Haptic on send', style: TextStyle(color: kText, fontSize: 14)),
+              subtitle: const Text('Vibrate when a message is sent', style: TextStyle(color: kMuted, fontSize: 12)),
+              value: _haptic,
+              onChanged: (v) => setState(() => _haptic = v),
+              activeColor: kPrimary,
+            ),
+            _row('Max reply length (${_maxReply.round()} tokens)',
+              Slider(
+                value: _maxReply,
+                min: 50,
+                max: 1000,
+                divisions: 19,
+                label: '${_maxReply.round()}',
+                onChanged: (v) => setState(() => _maxReply = v),
+                activeColor: kAmber,
               ),
             ),
           ]),
