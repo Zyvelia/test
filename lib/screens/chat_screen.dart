@@ -64,6 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _error;
   bool _showMemory = false;
   List<String> _memFacts = [];
+  StoryState _storyState = StoryState();
   String? _loadedCharId;
   SessionWallet? _wallet;
   bool _showWallet = false;
@@ -85,6 +86,7 @@ class _ChatScreenState extends State<ChatScreen> {
       store.saveChat(c.id, history);
     }
     _memFacts = store.loadMemory(c.id);
+    _storyState = store.loadStoryState(c.id);
     // init fresh wallet each session load
     final cname = c.currencyName.trim();
     final csym  = c.currencySymbol.trim();
@@ -158,7 +160,7 @@ class _ChatScreenState extends State<ChatScreen> {
           'If currency name/symbol are not yet defined, pick ones fitting the world and use them consistently.\n'
           '<<END_WALLET_CONTEXT>>'
         : '';
-    final baseSystemPrompt = OllamaService.instance.buildSystemPrompt(c, s, persona, _memFacts);
+    final baseSystemPrompt = OllamaService.instance.buildSystemPrompt(c, s, persona, _memFacts, storyState: _storyState);
     final systemPrompt = walletCtx.isNotEmpty ? baseSystemPrompt + walletCtx : baseSystemPrompt;
 
     final ctx = _history.length > s.contextWindow
@@ -194,7 +196,9 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() { _streaming = false; _streamingText = ''; });
       _scrollBottom();
 
-      if (extractAfter && _history.length % 6 == 0) _extractMemory();
+      if (extractAfter && _history.where((m) => m.isUser).length % 3 == 0) {
+        _updateStoryState();
+      }
     } catch (e) {
       if (!mounted) return;
       final partial = _streamingText.trim();
@@ -224,6 +228,8 @@ class _ChatScreenState extends State<ChatScreen> {
           TextButton(
             onPressed: () {
               StorageService.instance.clearChat(c.id);
+              StorageService.instance.clearStoryState(c.id);
+              _storyState = StoryState();
               Navigator.pop(context);
               _loadChat();
             },
@@ -262,7 +268,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return result.trim();
   }
 
-  void _extractMemory() async {
+  void _updateStoryState() async {
+    final c = context.read<AppProvider>().activeChar;
+    if (c == null) return;
+    final s = context.read<AppProvider>().settings;
+    final updated = await OllamaService.instance.updateStoryState(
+      baseUrl: s.ollamaUrl,
+      model: s.model,
+      charName: c.name,
+      current: _storyState,
+      recentMessages: List<ChatMessage>.from(_history),
+    );
+    if (mounted && updated != null) {
+      StorageService.instance.saveStoryState(c.id, updated);
+      setState(() { _storyState = StorageService.instance.loadStoryState(c.id); });
+    }
+    // Run the existing personal-fact extraction after story-state extraction to
+    // avoid issuing two heavy generation requests to the same local model at once.
+    await _extractMemory();
+  }
+
+  Future<void> _extractMemory() async {
     final c = context.read<AppProvider>().activeChar;
     if (c == null) return;
     final s = context.read<AppProvider>().settings;
@@ -1047,10 +1073,48 @@ class _MemoryPanelState extends State<_MemoryPanel> {
       children: [
         const Padding(
           padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
-          child: Text('MEMORY', style: TextStyle(color: kMuted, fontSize: 11, letterSpacing: 0.8, fontWeight: FontWeight.w700)),
+          child: Text('MEMORY & STORY STATE', style: TextStyle(color: kMuted, fontSize: 11, letterSpacing: 0.8, fontWeight: FontWeight.w700)),
         ),
         Expanded(
-          child: widget.facts.isEmpty
+          child: Column(
+            children: [
+              Builder(builder: (context) {
+                final story = StorageService.instance.loadStoryState(widget.charId);
+                if (story.isEmpty) return const SizedBox.shrink();
+                final sections = <String, String>{
+                  'CURRENT SCENE': story.currentScene,
+                  'CHARACTER STATE': story.characterState,
+                  'RELATIONSHIP': story.relationshipState,
+                  'YOUR CHARACTER': story.userState,
+                  'CONTINUITY': story.continuityNotes,
+                  if (story.keyEvents.isNotEmpty) 'IMPORTANT EVENTS': story.keyEvents.map((e) => '• $e').join('\n'),
+                  if (story.openThreads.isNotEmpty) 'OPEN THREADS': story.openThreads.map((e) => '• $e').join('\n'),
+                }..removeWhere((key, value) => value.trim().isEmpty);
+                return SizedBox(
+                  height: 230,
+                  child: SingleChildScrollView(
+                    child: Container(
+                      margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                      padding: const EdgeInsets.all(9),
+                      decoration: BoxDecoration(color: kPrimary.withOpacity(0.08), borderRadius: BorderRadius.circular(7), border: Border.all(color: kPrimary.withOpacity(0.25))),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('STORY CONTINUITY', style: TextStyle(color: kPrimary, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+                        const SizedBox(height: 6),
+                        ...sections.entries.map((entry) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(entry.key, style: const TextStyle(color: kMuted, fontSize: 9, fontWeight: FontWeight.w700)),
+                            const SizedBox(height: 2),
+                            Text(entry.value, style: const TextStyle(color: kTextSoft, fontSize: 11.5, height: 1.3)),
+                          ]),
+                        )),
+                      ]),
+                    ),
+                  ),
+                );
+              }),
+              Expanded(
+                child: widget.facts.isEmpty
               ? const Center(child: Text('No memories yet', style: TextStyle(color: kMuted, fontSize: 12)))
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1074,6 +1138,9 @@ class _MemoryPanelState extends State<_MemoryPanel> {
                     ),
                   ),
                 ),
+              ),
+            ],
+          ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),

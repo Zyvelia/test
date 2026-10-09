@@ -1,6 +1,5 @@
 // personas_screen.dart — persona management
 
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -8,8 +7,6 @@ import '../models/models.dart';
 import '../providers/app_provider.dart';
 import '../services/ollama_service.dart';
 import '../theme.dart';
-
-const _jsonDecoder = JsonDecoder();
 
 class PersonasScreen extends StatelessWidget {
   const PersonasScreen({super.key});
@@ -319,26 +316,28 @@ class _PersonaSheetState extends State<PersonaSheet> {
         prompt: prompt,
       );
 
-      var clean = raw.trim();
-      clean = clean.replaceAll(RegExp(r'^```(?:json)?\n?|```$', multiLine: true), '').trim();
-
-      try {
-        final j = Map<String, dynamic>.from(
-          _jsonDecoder.convert(clean) as Map,
-        );
+      final j = OllamaService.parseStructuredJson(raw);
+      if (j == null) {
         if (mounted) {
-          setState(() {
-            if ((j['name'] as String?)?.isNotEmpty == true) _name.text = j['name'] as String;
-            if ((j['appearance'] as String?)?.isNotEmpty == true) _appearance.text = j['appearance'] as String;
-            if ((j['personality'] as String?)?.isNotEmpty == true) _personality.text = j['personality'] as String;
-            if ((j['backstory'] as String?)?.isNotEmpty == true) _backstory.text = j['backstory'] as String;
-            final traits = j['traits'];
-            if (traits is List) _traits.text = traits.map((t) => t.toString()).join(', ');
-            _wizardExpanded = false;
-          });
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Could not parse that'),
+              content: SingleChildScrollView(child: Text(raw.trim())),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+            ),
+          );
         }
-      } catch (_) {
-        if (mounted) setState(() => _appearance.text = raw.trim());
+      } else if (mounted) {
+        setState(() {
+          if ((j['name'] as String?)?.isNotEmpty == true) _name.text = j['name'] as String;
+          if ((j['appearance'] as String?)?.isNotEmpty == true) _appearance.text = j['appearance'] as String;
+          if ((j['personality'] as String?)?.isNotEmpty == true) _personality.text = j['personality'] as String;
+          if ((j['backstory'] as String?)?.isNotEmpty == true) _backstory.text = j['backstory'] as String;
+          final traits = j['traits'];
+          if (traits is List) _traits.text = traits.map((t) => t.toString()).join(', ');
+          _wizardExpanded = false;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -459,7 +458,10 @@ class _PersonaSheetState extends State<PersonaSheet> {
     minChildSize: 0.5,
     maxChildSize: 0.97,
     expand: false,
-    builder: (_, scrollController) => Container(
+    builder: (_, scrollController) => GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      behavior: HitTestBehavior.opaque,
+      child: Container(
       decoration: const BoxDecoration(
         color: kSurface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -489,6 +491,7 @@ class _PersonaSheetState extends State<PersonaSheet> {
             child: ListView(
               controller: scrollController,
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               children: [
                 TextField(
                   controller: _name,
@@ -573,6 +576,7 @@ class _PersonaSheetState extends State<PersonaSheet> {
           ),
         ],
       ),
+    ),
     ),
   );
 }

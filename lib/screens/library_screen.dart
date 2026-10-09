@@ -1,7 +1,6 @@
 // library_screen.dart — character library
 
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -9,8 +8,6 @@ import '../models/models.dart';
 import '../providers/app_provider.dart';
 import '../services/ollama_service.dart';
 import '../theme.dart';
-
-const json_decoder = JsonDecoder();
 
 class LibraryScreen extends StatefulWidget {
   final void Function(Character) onOpenChar;
@@ -301,7 +298,7 @@ class CharacterSheet extends StatefulWidget {
 
 class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  late final TextEditingController _name, _avatar, _personality, _scenario, _greeting, _examples, _tags, _nsfwDesc, _currencyName, _currencySymbol;
+  late final TextEditingController _name, _avatar, _personality, _scenario, _greeting, _tags, _nsfwDesc, _currencyName, _currencySymbol;
   late final TextEditingController _concept;
   String _category = 'Original';
   String _visibility = 'Private';
@@ -320,7 +317,6 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
     _personality = TextEditingController(text: c?.personality ?? '');
     _scenario    = TextEditingController(text: c?.scenario ?? '');
     _greeting    = TextEditingController(text: c?.greeting ?? '');
-    _examples    = TextEditingController(text: c?.examples ?? '');
     _tags        = TextEditingController(text: c?.tags.join(', ') ?? '');
     _nsfwDesc       = TextEditingController(text: c?.nsfwDescription ?? '');
     _currencyName   = TextEditingController(text: c?.currencyName ?? '');
@@ -333,7 +329,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
   @override
   void dispose() {
     _tabs.dispose();
-    for (final c in [_concept, _name, _avatar, _personality, _scenario, _greeting, _examples, _tags, _nsfwDesc, _currencyName, _currencySymbol]) {
+    for (final c in [_concept, _name, _avatar, _personality, _scenario, _greeting, _tags, _nsfwDesc, _currencyName, _currencySymbol]) {
       c.dispose();
     }
     super.dispose();
@@ -397,14 +393,6 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
     ' Use CAI-style: action in *asterisks*, dialogue plain. 1-4 sentences. Return only the message.',
   );
 
-  void _genExamples() => _generate(
-    'examples', _examples,
-    'Write 5 example dialogue exchanges between $_nameStr and ${widget.settings.userName}.'
-    '${_personality.text.isNotEmpty ? ' Personality: ${_personality.text.substring(0, _personality.text.length.clamp(0, 400))}.' : ''}'
-    ' Format:\n${widget.settings.userName}: ...\n$_nameStr: ...\n\n'
-    'Character replies use *asterisks* for actions. Return only the formatted exchanges.',
-  );
-
   void _genNsfw() => _generate(
     'nsfw', _nsfwDesc,
     'Write explicit adult context for $_nameStr, a $_category character.'
@@ -433,8 +421,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
           'You are a character creation assistant. Given the concept below, return a JSON object with these exact keys:\n'
           '"name" (string), "category" (one of: Original,Anime,Fantasy,Games,Sci-Fi,Historical,Roleplay,Horror,Slice of Life,Other),\n'
           '"tags" (array of 3-5 short trait strings), "personality" (2-3 paragraphs),\n'
-          '"scenario" (1-2 paragraphs setting the scene), "greeting" (1-4 sentence opening message in CAI style: *action* and plain dialogue),\n'
-          '"examples" (5 dialogue exchanges formatted as "User: ...\\nCharacter: ...\\n\\n").\n'
+          '"scenario" (1-2 paragraphs setting the scene), "greeting" (1-4 sentence opening message in CAI style: *action* and plain dialogue).\n'
           'Return ONLY valid JSON, no markdown fences, no commentary.\n\n'
           'Concept: $concept\n'
           'Genre preference: $_category\n'
@@ -446,33 +433,32 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
         prompt: briefPrompt,
       );
 
-      // strip possible markdown fences
-      var clean = raw.trim();
-      clean = clean.replaceAll(RegExp(r'^```(?:json)?\n?|```$', multiLine: true), '').trim();
-
-      try {
-        final j = Map<String, dynamic>.from(
-          json_decoder.convert(clean) as Map,
-        );
+      final j = OllamaService.parseStructuredJson(raw);
+      if (j == null) {
         if (mounted) {
-          setState(() {
-            if ((j['name'] as String?)?.isNotEmpty == true) _name.text = j['name'] as String;
-            final cat = j['category'] as String?;
-            if (cat != null && ['Original','Anime','Fantasy','Games','Sci-Fi','Historical','Roleplay','Horror','Slice of Life','Other'].contains(cat)) {
-              _category = cat;
-            }
-            final tags = j['tags'];
-            if (tags is List) _tags.text = tags.map((t) => t.toString()).join(', ');
-            if ((j['personality'] as String?)?.isNotEmpty == true) _personality.text = j['personality'] as String;
-            if ((j['scenario'] as String?)?.isNotEmpty == true) _scenario.text = j['scenario'] as String;
-            if ((j['greeting'] as String?)?.isNotEmpty == true) _greeting.text = j['greeting'] as String;
-            if ((j['examples'] as String?)?.isNotEmpty == true) _examples.text = j['examples'] as String;
-            _wizardExpanded = false; // collapse wizard after success
-          });
+          showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              title: const Text('Could not parse that'),
+              content: SingleChildScrollView(child: Text(raw.trim())),
+              actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+            ),
+          );
         }
-      } catch (_) {
-        // JSON parse failed — fall back to filling personality only from raw text
-        if (mounted) setState(() => _personality.text = raw.trim());
+      } else if (mounted) {
+        setState(() {
+          if ((j['name'] as String?)?.isNotEmpty == true) _name.text = j['name'] as String;
+          final cat = j['category'] as String?;
+          if (cat != null && ['Original','Anime','Fantasy','Games','Sci-Fi','Historical','Roleplay','Horror','Slice of Life','Other'].contains(cat)) {
+            _category = cat;
+          }
+          final tags = j['tags'];
+          if (tags is List) _tags.text = tags.map((t) => t.toString()).join(', ');
+          if ((j['personality'] as String?)?.isNotEmpty == true) _personality.text = j['personality'] as String;
+          if ((j['scenario'] as String?)?.isNotEmpty == true) _scenario.text = j['scenario'] as String;
+          if ((j['greeting'] as String?)?.isNotEmpty == true) _greeting.text = j['greeting'] as String;
+          _wizardExpanded = false; // collapse wizard after success
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -521,7 +507,6 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
     );
     _genScenario();
     _genGreeting();
-    _genExamples();
   }
 
   Character _buildCharacter() {
@@ -534,7 +519,6 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
       personality: _personality.text.trim(),
       scenario: _scenario.text.trim(),
       greeting: _greeting.text.trim(),
-      examples: _examples.text.trim(),
       tags: _tagsList,
       visibility: _visibility,
       nsfw: _nsfw,
@@ -607,7 +591,10 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
       minChildSize: 0.5,
       maxChildSize: 0.97,
       expand: false,
-      builder: (_, __) => Padding(
+      builder: (_, __) => GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
         padding: EdgeInsets.only(bottom: keyboardH),
         child: Container(
           decoration: const BoxDecoration(
@@ -722,7 +709,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
                             ),
                           ),
                           const SizedBox(height: 4),
-                          const Text('Fills name, personality, scenario, greeting, examples and tags all at once.', style: TextStyle(color: kMuted, fontSize: 11)),
+                          const Text('Fills name, personality, scenario, greeting and tags all at once.', style: TextStyle(color: kMuted, fontSize: 11)),
                         ],
                         const SizedBox(height: 12),
                         // ── legacy per-field buttons ─────────────────────────
@@ -753,8 +740,6 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
                       padding: EdgeInsets.fromLTRB(20, 16, 20, keyboardH > 0 ? 16 : 32),
                       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                       children: [
-                        _field('Example exchanges', _examples, 'examples', _genExamples, maxLines: 8,
-                          hint: 'Example dialogue showing the character\'s voice…', fieldName: 'example exchanges'),
                         _dropdownRow('Visibility', _visibility, ['Private','Public'],
                           (v) => setState(() => _visibility = v)),
                         const SizedBox(height: 20),
@@ -803,6 +788,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
               ),
             ],
           ),
+        ),
         ),
       ),
     );

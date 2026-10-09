@@ -23,7 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _persona  = TextEditingController();
   String _style   = 'balanced';
   double _ctx     = 40;
-  double _maxReply = 300;
+  double _maxReply = 650;
   bool _haptic = true;
   String _modelHint = '';
   bool _fetching  = false;

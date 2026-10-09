@@ -12,7 +12,6 @@ class Character {
   final String personality;
   final String scenario;
   final String greeting;
-  final String examples;
   final List<String> tags;
   final String visibility;
   final bool nsfw;
@@ -28,7 +27,6 @@ class Character {
     this.personality = '',
     this.scenario = '',
     this.greeting = '',
-    this.examples = '',
     this.tags = const [],
     this.visibility = 'Private',
     this.nsfw = false,
@@ -45,7 +43,6 @@ class Character {
         personality: j['personality'] ?? '',
         scenario: j['scenario'] ?? '',
         greeting: j['greeting'] ?? '',
-        examples: j['examples'] ?? '',
         tags: List<String>.from(j['tags'] ?? []),
         visibility: j['visibility'] ?? 'Private',
         nsfw: j['nsfw'] ?? false,
@@ -62,7 +59,6 @@ class Character {
         'personality': personality,
         'scenario': scenario,
         'greeting': greeting,
-        'examples': examples,
         'tags': tags,
         'visibility': visibility,
         'nsfw': nsfw,
@@ -79,7 +75,6 @@ class Character {
     String? personality,
     String? scenario,
     String? greeting,
-    String? examples,
     List<String>? tags,
     String? visibility,
     bool? nsfw,
@@ -95,7 +90,6 @@ class Character {
         personality: personality ?? this.personality,
         scenario: scenario ?? this.scenario,
         greeting: greeting ?? this.greeting,
-        examples: examples ?? this.examples,
         tags: tags ?? this.tags,
         visibility: visibility ?? this.visibility,
         nsfw: nsfw ?? this.nsfw,
@@ -217,6 +211,75 @@ class ChatSession {
         'created_at': createdAt.toIso8601String(),
         'messages': messages.map((m) => m.toJson()).toList(),
       };
+}
+
+// ── StoryState — durable continuity for an ongoing roleplay ────────────────────
+
+class StoryState {
+  final String currentScene;
+  final String characterState;
+  final String relationshipState;
+  final String userState;
+  final String continuityNotes;
+  final List<String> keyEvents;
+  final List<String> openThreads;
+  final DateTime updatedAt;
+
+  StoryState({
+    this.currentScene = '',
+    this.characterState = '',
+    this.relationshipState = '',
+    this.userState = '',
+    this.continuityNotes = '',
+    this.keyEvents = const [],
+    this.openThreads = const [],
+    DateTime? updatedAt,
+  }) : updatedAt = updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+
+  factory StoryState.fromJson(Map<String, dynamic> j) => StoryState(
+        currentScene: j['current_scene']?.toString() ?? '',
+        characterState: j['character_state']?.toString() ?? '',
+        relationshipState: j['relationship_state']?.toString() ?? '',
+        userState: j['user_state']?.toString() ?? '',
+        continuityNotes: j['continuity_notes']?.toString() ?? '',
+        keyEvents: (j['key_events'] as List? ?? []).map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList(),
+        openThreads: (j['open_threads'] as List? ?? []).map((e) => e.toString()).where((e) => e.trim().isNotEmpty).toList(),
+        updatedAt: DateTime.tryParse(j['updated_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'current_scene': currentScene,
+        'character_state': characterState,
+        'relationship_state': relationshipState,
+        'user_state': userState,
+        'continuity_notes': continuityNotes,
+        'key_events': keyEvents,
+        'open_threads': openThreads,
+        'updated_at': updatedAt.millisecondsSinceEpoch == 0 ? DateTime.now().toIso8601String() : updatedAt.toIso8601String(),
+      };
+
+  bool get isEmpty => currentScene.isEmpty && characterState.isEmpty && relationshipState.isEmpty &&
+      userState.isEmpty && continuityNotes.isEmpty && keyEvents.isEmpty && openThreads.isEmpty;
+
+  StoryState copyWith({
+    String? currentScene,
+    String? characterState,
+    String? relationshipState,
+    String? userState,
+    String? continuityNotes,
+    List<String>? keyEvents,
+    List<String>? openThreads,
+    DateTime? updatedAt,
+  }) => StoryState(
+        currentScene: currentScene ?? this.currentScene,
+        characterState: characterState ?? this.characterState,
+        relationshipState: relationshipState ?? this.relationshipState,
+        userState: userState ?? this.userState,
+        continuityNotes: continuityNotes ?? this.continuityNotes,
+        keyEvents: keyEvents ?? this.keyEvents,
+        openThreads: openThreads ?? this.openThreads,
+        updatedAt: updatedAt ?? DateTime.now(),
+      );
 }
 
 // ── Wallet ────────────────────────────────────────────────────────────────────
@@ -355,7 +418,7 @@ class AppSettings {
   final String activePersonaId;
   final int contextWindow;
   final String responseStyle; // concise | balanced | verbose
-  final int maxReplyTokens;   // num_predict cap: 50–1000
+  final int maxReplyTokens;   // num_predict cap: 50–1000; higher values allow fuller roleplay
   final bool hapticOnSend;
   final ChatAppearance appearance;
 
@@ -367,7 +430,7 @@ class AppSettings {
     this.activePersonaId = '',
     this.contextWindow = 40,
     this.responseStyle = 'balanced',
-    this.maxReplyTokens = 300,
+    this.maxReplyTokens = 650,
     this.hapticOnSend = true,
     this.appearance = const ChatAppearance(),
   });
@@ -380,7 +443,7 @@ class AppSettings {
         activePersonaId: j['active_persona_id'] ?? '',
         contextWindow: j['context_window'] ?? 40,
         responseStyle: j['response_style'] ?? 'balanced',
-        maxReplyTokens: j['max_reply_tokens'] ?? 300,
+        maxReplyTokens: j['max_reply_tokens'] ?? 650,
         hapticOnSend: j['haptic_on_send'] ?? true,
         appearance: j['appearance'] != null
             ? ChatAppearance.fromJson(j['appearance'] as Map<String, dynamic>)

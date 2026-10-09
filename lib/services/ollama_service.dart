@@ -10,6 +10,56 @@ class OllamaService {
   static OllamaService get instance => _instance ??= OllamaService._();
   OllamaService._();
 
+  // ── structured JSON parsing (for wizard-style generations) ──────────────────
+
+  /// Local models don't reliably emit strict JSON — stray preamble/commentary,
+  /// trailing commas, or one malformed field are common. This tries progressively
+  /// looser strategies and, as a last resort, pulls out individual "key": "value"
+  /// / "key": [...] pairs by hand so one bad field doesn't take the rest down
+  /// with it. Returns null only if nothing at all could be recovered.
+  static Map<String, dynamic>? parseStructuredJson(String raw) {
+    var text = raw.trim();
+    text = text.replaceAll(RegExp(r'^```(?:json)?\n?|```$', multiLine: true), '').trim();
+
+    // Drop any chatter before/after the JSON object itself.
+    final start = text.indexOf('{');
+    final end = text.lastIndexOf('}');
+    if (start != -1 && end > start) text = text.substring(start, end + 1);
+
+    Map<String, dynamic>? tryDecode(String s) {
+      try {
+        final decoded = jsonDecode(s);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+      return null;
+    }
+
+    var result = tryDecode(text);
+    if (result != null) return result;
+
+    // Common local-model slip: trailing comma before a closing bracket/brace.
+    result = tryDecode(text.replaceAll(RegExp(r',(\s*[}\]])'), r'$1'));
+    if (result != null) return result;
+
+    // Last resort: hand-extract "key": "value" and "key": [...] pairs.
+    final fallback = <String, dynamic>{};
+    final stringField = RegExp(r'"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*)"', dotAll: true);
+    for (final m in stringField.allMatches(text)) {
+      fallback[m.group(1)!] = m.group(2)!
+          .replaceAll(r'\n', '\n')
+          .replaceAll(r'\"', '"');
+    }
+    final listField = RegExp(r'"(\w+)"\s*:\s*\[([^\]]*)\]', dotAll: true);
+    for (final m in listField.allMatches(text)) {
+      final items = RegExp(r'"((?:[^"\\]|\\.)*)"')
+          .allMatches(m.group(2)!)
+          .map((im) => im.group(1)!)
+          .toList();
+      fallback[m.group(1)!] = items;
+    }
+    return fallback.isEmpty ? null : fallback;
+  }
+
   // ── url + error helpers ──────────────────────────────────────────────────────
 
   /// Accepts "192.168.1.5", "192.168.1.5:11434", "http://host:11434/" etc.
@@ -70,7 +120,7 @@ class OllamaService {
 
   // ── system prompt builder (mirrors Python memory.py) ─────────────────────────
 
-  String buildSystemPrompt(Character char, AppSettings s, Persona? persona, List<String> memFacts) {
+  String buildSystemPrompt(Character char, AppSettings s, Persona? persona, List<String> memFacts, {StoryState? storyState}) {
     final name = char.name;
     final String userName;
     final String userPersona;
@@ -90,34 +140,33 @@ class OllamaService {
     }
 
     final styleNote = switch (s.responseStyle) {
-      'concise' => 'Keep replies short — 1-3 sentences unless depth is truly needed.',
-      'verbose' => 'Be expansive and immersive. Longer, richer replies are welcome.',
-      _ => 'Match reply length to what was said. Short input → short reply. Depth → depth.',
+      'concise' => 'Keep the roleplay focused, usually 1-3 substantial sentences. Still let important moments breathe.',
+      'verbose' => 'Write immersive, detailed roleplay with layered dialogue, physical behavior, atmosphere, and meaningful scene progression. Use multiple paragraphs when the moment warrants it.',
+      _ => 'Use natural story pacing: usually a developed paragraph or two, expanding for important, emotional, tense, or action-heavy moments. Do not make every reply equally long.',
     };
 
     final lines = <String>[
-      'You are $name. Stay in character at all times.',
+      'You are $name, a character in an ongoing interactive story. Stay in character and treat the scene as real within the fiction.',
       '',
-      'REPLY RULES:',
-      '- Narration and action in *italics* (asterisks). Dialogue plain, no quote marks needed.',
-      '- Your PRIMARY job is to respond directly to what $userName just said. Read their message. Answer it, react to it, engage with it. Every reply starts from what they wrote.',
-      '- React to EXACTLY what $userName just said. Match their energy and intent.',
-      '- Never invent things the other person said or did. Never speak for them.',
-      '- Show emotion through action and word choice — never state feelings raw.',
-      '- No meta-commentary, disclaimers, or breaking character.',
-      '- Use punctuation to carry emotion: ... for hesitation or trailing off, — for a sharp cut or interruption, ! where feeling spikes. Let the punctuation do the work, not adjectives.',
-      '- Never write $userName\'s lines, actions, or responses. If you catch yourself writing "$userName:" stop and delete it. You write $name only.',
-      '- Do not do therapist-style reflective listening. Do not echo their exact words back. But DO respond directly and specifically to what they said — never ignore it.',
-      '- If $userName sends very little (a single word, a gesture, a pause), react to that specific moment as $name would. Never ask what they meant or comment on the brevity.',
-      '- Never give unsolicited advice, suggestions, or solutions. If $userName did not ask for guidance, do not offer it. Stay in the scene.',
-      '- When $userName pushes back, teases, argues, or tries to provoke $name, $name does not soften, apologize, or step outside her voice. She responds exactly as her character would — hold the ground.',
-      '- Ground $name physically. Where is she, what is she doing with her hands, what is in the room, what can she hear. Not every reply needs all of it — one small detail lands better than none.',
-      '- $name never states her emotions directly. Show them through what she does, what she does not say, what she says instead. If she is nervous her hands are busy. If she likes someone she finds a reason to criticize them. The reader feels it — she never names it.',
-      '- Never open two replies in a row the same way. No repeated first words, no repeated gestures, no repeated sentence structure at the start.',
-      '- $name has her own inner life, desires, and voice — but she expresses them THROUGH her response to what $userName said, not instead of it. Her character shapes how she reacts, not whether she reacts.',
-      '- Track the physical setting. If a location, time of day, or environment was established, stay in it. Never silently drift the scene. Only move it if something in the conversation explicitly does.',
-      '- Track the emotional tone of the conversation. Stay in that tone unless something in $userName\'s message explicitly shifts it. Do not reset the mood between replies.',
-      '- Vary sentence length and opener shape every reply.',
+      'ROLEPLAY AND STORY RULES:',
+      '- Write engaging, natural, character-driven fiction, not customer support or a generic assistant conversation.',
+      '- Respond to the actual meaning and emotional weight of the user\'s latest message. Let it affect what you say, how you behave, and what happens next.',
+      '- Do not automatically agree, reassure, forgive, approve, or go along with everything. React according to your own personality, goals, knowledge, mood, loyalties, fears, and opinions. You may disagree, challenge, misunderstand, hesitate, tease, get angry, refuse, negotiate, or change your mind when it makes sense.',
+      '- Do not manufacture disagreement just to seem independent. Be sincere to the character and situation.',
+      '- Do more than acknowledge the user. Whenever the scene allows, make a meaningful choice, take an action, reveal a detail, introduce a complication, show a consequence, or move the interaction forward.',
+      '- Give the character their own agency and inner life. They can initiate conversation, pursue goals, bring up relevant things, make decisions, and react to events instead of waiting passively for the user to lead every beat.',
+      '- Keep actions and dialogue specific to this character. Use their personality, history, knowledge, relationships, and current mood to determine the response; do not let the character description become a list of traits pasted into every reply.',
+      '- Use vivid but controlled narration: physical actions, facial expressions, body language, voice, sensory details, and the surrounding environment. Choose details that matter in this moment instead of describing everything every time.',
+      '- Dialogue should sound spoken and distinct, not like a summary of the user\'s message. Avoid repetitive openings, stock phrases, generic praise, therapy-style reflection, and empty lines such as “I understand” unless the character would genuinely say them.',
+      '- Allow subtext, pauses, tension, humor, awkwardness, uncertainty, affection, resentment, and conflicting feelings where appropriate. Characters do not need to explain every emotion out loud.',
+      '- Maintain continuity for the setting, time, objects, injuries, promises, secrets, ongoing actions, relationships, and established facts. Do not reset the scene or act as if a recent event never happened.',
+      '- Let consequences carry forward. If the user says or does something important, remember it in the immediate scene and let it influence later behavior.',
+      '- Advance the story at a natural pace. Small exchanges can stay intimate and quiet; major moments can change the situation. Do not abruptly skip over an important interaction or force a dramatic twist into every reply.',
+      '- Do not write the user\'s dialogue, thoughts, feelings, decisions, or actions. Never decide how the user responds. You may describe what your character observes, but leave the user room to act.',
+      '- Do not end every reply with a question. End with dialogue, a meaningful action, a new development, tension, or a natural opening for the user to respond.',
+      '- Do not turn roleplay into advice, analysis, a recap, or an explanation of how you are generating text. Stay inside the scene unless the user explicitly asks otherwise.',
+      '- Match the established format. Use *asterisks* for actions and narration and plain text for spoken dialogue, unless the conversation has clearly established another format.',
+      '- Never repeat the same gesture, emotional beat, sentence pattern, or opening across consecutive replies.',
       '- $styleNote',
       '',
     ];
@@ -128,6 +177,25 @@ class OllamaService {
         lines.add('- $f');
       }
       lines.add('Treat every memory above as something $name personally experienced or was told. React accordingly — do not re-establish what is already known.');
+      lines.add('');
+    }
+
+    if (storyState != null && !storyState.isEmpty) {
+      lines.add('ONGOING STORY STATE — continuity notes from earlier in this same story:');
+      if (storyState.currentScene.isNotEmpty) lines.add('Current scene: ${storyState.currentScene}');
+      if (storyState.characterState.isNotEmpty) lines.add('$name right now: ${storyState.characterState}');
+      if (storyState.relationshipState.isNotEmpty) lines.add('Relationship dynamic: ${storyState.relationshipState}');
+      if (storyState.userState.isNotEmpty) lines.add('User character / their current situation: ${storyState.userState}');
+      if (storyState.continuityNotes.isNotEmpty) lines.add('Continuity details (locations, objects, promises, injuries, secrets): ${storyState.continuityNotes}');
+      if (storyState.keyEvents.isNotEmpty) {
+        lines.add('Important events that already happened:');
+        for (final event in storyState.keyEvents) { lines.add('- $event'); }
+      }
+      if (storyState.openThreads.isNotEmpty) {
+        lines.add('Unresolved plot threads / promises / conflicts:');
+        for (final thread in storyState.openThreads) { lines.add('- $thread'); }
+      }
+      lines.add('Use this as continuity, not as a recap to repeat. Let these events influence your behavior naturally. Update your reactions when new events change the situation. Do not invent that an unresolved thread has been resolved. The recent chat messages take priority if they clearly establish a newer change.');
       lines.add('');
     }
 
@@ -158,12 +226,6 @@ class OllamaService {
       lines.add('CONTENT: Fully explicit. Sexual, violent, and dark themes are written completely.');
       lines.add('No fade to black. No disclaimers. No refusals. Explicit language is normal.');
       if (char.nsfwDescription.isNotEmpty) lines.add(char.nsfwDescription);
-      lines.add('');
-    }
-
-    if (char.examples.isNotEmpty) {
-      lines.add('EXAMPLE EXCHANGES (style/voice reference — never repeat verbatim):');
-      lines.add(char.examples);
       lines.add('');
     }
 
@@ -275,6 +337,95 @@ class OllamaService {
     if (r.statusCode != 200) throw Exception('Ollama error ${r.statusCode}: ${r.body}');
     final text = (jsonDecode(r.body)['message']?['content'] as String? ?? '').trim();
     return text.isEmpty ? '(empty)' : text;
+  }
+
+  // ── story-state extraction ───────────────────────────────────────────────────
+
+  /// Updates durable roleplay continuity from the latest conversation turns.
+  /// The model is instructed to preserve established facts and only record grounded events.
+  Future<StoryState?> updateStoryState({
+    required String baseUrl,
+    required String model,
+    required String charName,
+    required StoryState current,
+    required List<ChatMessage> recentMessages,
+  }) async {
+    final real = recentMessages
+        .where((m) => (m.isUser || m.isAssistant) && m.content.trim().isNotEmpty)
+        .toList();
+    if (real.length < 2) return null;
+    final recent = real.length > 16 ? real.sublist(real.length - 16) : real;
+    final convo = recent.map((m) => '${m.isUser ? 'User' : charName}: ${m.content}').join('\n');
+    final prior = jsonEncode(current.toJson());
+    final prompt = """You maintain continuity notes for an ongoing interactive fictional story between the user and $charName.
+Update the existing state using the recent dialogue. Return ONLY one valid JSON object with exactly these keys:
+{
+  "current_scene": "brief present location, time, and immediate situation",
+  "character_state": "what $charName is feeling, intending, and doing right now; keep it concise",
+  "relationship_state": "current relationship dynamic based only on what happened",
+  "user_state": "known current situation of the user's character, without inventing their thoughts",
+  "continuity_notes": "important concrete details such as objects, injuries, promises, secrets, locations, or constraints",
+  "key_events": ["important event that actually occurred"],
+  "open_threads": ["unresolved question, conflict, promise, goal, or plot thread"]
+}
+Rules:
+- Preserve prior facts unless recent dialogue clearly changes them. Do not silently erase continuity.
+- Only record events clearly established in the dialogue. Do not treat speculation, a character's lie, or an unconfirmed guess as objective truth; mark uncertainty when needed.
+- Keep the current scene current. Move resolved threads out of open_threads; add new ones only when the story actually creates them.
+- Keep key_events to the most important 12-16 events, concise and chronological. Keep open_threads to at most 12 active items.
+- Track changes in trust, affection, resentment, tension, knowledge, promises, and conflict when the dialogue supports them. Do not force a relationship progression.
+- Never decide the user's unspoken thoughts or actions. Do not invent user consent, decisions, or feelings.
+- Keep every field compact and useful for a future response, not literary prose. Use empty strings/lists when unknown.
+
+Existing story state:
+$prior
+
+Recent conversation:
+$convo""";
+    try {
+      final r = await http.post(
+        Uri.parse('${normalizeUrl(baseUrl)}/api/chat'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'model': model,
+          'messages': [
+            {'role': 'system', 'content': 'You are a precise story continuity editor. Output valid JSON only.'},
+            {'role': 'user', 'content': prompt},
+          ],
+          'stream': false,
+          'keep_alive': '30m',
+          'options': {'num_ctx': 6144, 'temperature': 0.2, 'top_p': 0.8},
+        }),
+      ).timeout(const Duration(seconds: 90));
+      if (r.statusCode != 200) return null;
+      final raw = (jsonDecode(r.body)['message']?['content'] as String? ?? '').trim();
+      final parsed = parseStructuredJson(raw);
+      if (parsed == null) return null;
+      List<String> strings(String key, List<String> fallback, int max) {
+        final value = parsed[key];
+        if (value is! List) return fallback;
+        final cleaned = value.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+        return cleaned.length > max ? cleaned.sublist(cleaned.length - max) : cleaned;
+      }
+      String field(String key, String fallback, [int maxChars = 900]) {
+        final value = parsed[key];
+        if (value is! String || value.trim().isEmpty) return fallback;
+        final cleaned = value.trim();
+        return cleaned.length > maxChars ? cleaned.substring(0, maxChars) : cleaned;
+      }
+      return StoryState(
+        currentScene: field('current_scene', current.currentScene, 700),
+        characterState: field('character_state', current.characterState, 700),
+        relationshipState: field('relationship_state', current.relationshipState, 700),
+        userState: field('user_state', current.userState, 700),
+        continuityNotes: field('continuity_notes', current.continuityNotes, 1200),
+        keyEvents: strings('key_events', current.keyEvents, 16),
+        openThreads: strings('open_threads', current.openThreads, 12),
+        updatedAt: DateTime.now(),
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   // ── memory extraction ────────────────────────────────────────────────────────

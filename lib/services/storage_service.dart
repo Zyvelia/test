@@ -31,6 +31,7 @@ class StorageService {
   File _charFile(String id) => File('${_base.path}/characters/$id.json');
   File _chatFile(String id) => File('${_base.path}/chats/$id.json');
   File _memFile(String id) => File('${_base.path}/memories/$id.json');
+  File _storyStateFile(String id) => File('${_base.path}/memories/${id}_story_state.json');
   File _personaFile(String id) => File('${_base.path}/personas/$id.json');
   File _sessionFile(String id) => File('${_base.path}/sessions/$id.json');
   File get _settingsFile => File('${_base.path}/settings.json');
@@ -210,4 +211,26 @@ class StorageService {
       saveMemory(charId, facts);
     }
   }
+
+  // ── roleplay story state ────────────────────────────────────────────────────
+
+  StoryState loadStoryState(String charId) {
+    final json = _readJson(_storyStateFile(charId));
+    return StoryState.fromJson(json);
+  }
+
+  void saveStoryState(String charId, StoryState state) {
+    final normalized = state.copyWith(
+      keyEvents: state.keyEvents.where((e) => e.trim().isNotEmpty).toList().reversed.take(16).toList().reversed.toList(),
+      openThreads: state.openThreads.where((e) => e.trim().isNotEmpty).toList().reversed.take(12).toList().reversed.toList(),
+      updatedAt: DateTime.now(),
+    );
+    _writeJson(_storyStateFile(charId), normalized.toJson());
+  }
+
+  void clearStoryState(String charId) {
+    final file = _storyStateFile(charId);
+    if (file.existsSync()) file.deleteSync();
+  }
+
 }
