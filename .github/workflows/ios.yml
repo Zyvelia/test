@@ -1,0 +1,104 @@
+name: Build CharChat iOS IPA
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show toolchain
+        run: |
+          flutter --version
+          xcodebuild -version
+
+      - name: Recreate iOS host project
+        run: |
+          set -euo pipefail
+          rm -rf ios
+          flutter create --platforms=ios --org com.example .
+          flutter pub get
+
+      - name: Patch Info.plist (local network + HTTP + photo access)
+        run: |
+          set -euo pipefail
+          PLIST=ios/Runner/Info.plist
+          PB=/usr/libexec/PlistBuddy
+          # Without these, iOS silently blocks http://192.168.x.x connections to your PC
+          $PB -c "Delete :NSAppTransportSecurity" $PLIST 2>/dev/null || true
+          $PB -c "Add :NSAppTransportSecurity dict" $PLIST
+          $PB -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" $PLIST
+          $PB -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" $PLIST
+          $PB -c "Delete :NSLocalNetworkUsageDescription" $PLIST 2>/dev/null || true
+          $PB -c "Add :NSLocalNetworkUsageDescription string 'CharChat connects to Ollama running on your PC over your local network.'" $PLIST
+          $PB -c "Delete :NSPhotoLibraryUsageDescription" $PLIST 2>/dev/null || true
+          $PB -c "Add :NSPhotoLibraryUsageDescription string 'CharChat uses your photo library to set character avatars.'" $PLIST
+          $PB -c "Delete :NSCameraUsageDescription" $PLIST 2>/dev/null || true
+          $PB -c "Add :NSCameraUsageDescription string 'CharChat uses your camera to capture character avatar photos.'" $PLIST
+          $PB -c "Print" $PLIST | head -60
+
+      - name: Generate Flutter iOS files
+        run: |
+          set -euo pipefail
+          flutter build ios --release --config-only --no-codesign
+          test -f ios/Runner.xcodeproj/project.pbxproj
+          test -f ios/Flutter/Generated.xcconfig
+          test -f ios/Runner/GeneratedPluginRegistrant.m
+          test -f ios/Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage/Package.swift
+
+      - name: Install CocoaPods dependencies
+        run: |
+          set -euo pipefail
+          cd ios
+          pod install --repo-update
+
+      - name: Build unsigned iOS app with Xcode
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build/ios_xcode \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build
+
+      - name: Find and package Runner.app
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/ios_xcode/Build/Products -type d -name 'Runner.app' -print -quit)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Runner.app was not produced."
+            find build/ios_xcode/Build/Products -maxdepth 4 -type f | head -100 || true
+            exit 1
+          fi
+          rm -rf Payload
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/Runner.app
+          zip -qry CharChat.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: CharChat-iOS
+          path: CharChat.ipa
+          if-no-files-found: error
+          retention-days: 14

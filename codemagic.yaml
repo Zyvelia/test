@@ -1,0 +1,44 @@
+workflows:
+  ios-release:
+    name: CharChat iOS Build
+    max_build_duration: 60
+    environment:
+      flutter: 3.22.0
+      xcode: latest
+      cocoapods: default
+
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+
+      - name: Set bundle ID
+        script: |
+          /usr/libexec/PlistBuddy -c \
+            "Set :CFBundleIdentifier com.charchat.app" \
+            ios/Runner/Info.plist
+
+      - name: Allow local network + HTTP
+        script: |
+          PB=/usr/libexec/PlistBuddy
+          P=ios/Runner/Info.plist
+          $PB -c "Add :NSLocalNetworkUsageDescription string 'CharChat connects to Ollama on your PC over your local network.'" $P || true
+
+      - name: Flutter build IPA (no codesign)
+        script: |
+          flutter build ios --release --no-codesign
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -r CharchatApp.ipa Payload
+          rm -rf Payload
+
+    artifacts:
+      - build/ios/iphoneos/CharchatApp.ipa
+
+    publishing:
+      email:
+        recipients:
+          - your@email.com          # ← swap this
+        notify:
+          success: true
+          failure: true
