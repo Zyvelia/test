@@ -18,6 +18,7 @@ class Character {
   final String nsfwDescription;
   final String currencyName;   // e.g. "gold", "credits" — blank = AI picks
   final String currencySymbol; // e.g. "🪙", "₵", "G" — blank = AI picks
+  final String modelOverride;
 
   Character({
     required this.id,
@@ -33,6 +34,7 @@ class Character {
     this.nsfwDescription = '',
     this.currencyName = '',
     this.currencySymbol = '',
+    this.modelOverride = '',
   });
 
   factory Character.fromJson(Map<String, dynamic> j) => Character(
@@ -49,6 +51,7 @@ class Character {
         nsfwDescription: j['nsfw_description'] ?? '',
         currencyName: j['currency_name'] ?? '',
         currencySymbol: j['currency_symbol'] ?? '',
+        modelOverride: j['model_override'] ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -65,6 +68,7 @@ class Character {
         'nsfw_description': nsfwDescription,
         'currency_name': currencyName,
         'currency_symbol': currencySymbol,
+        'model_override': modelOverride,
       };
 
   Character copyWith({
@@ -81,6 +85,7 @@ class Character {
     String? nsfwDescription,
     String? currencyName,
     String? currencySymbol,
+    String? modelOverride,
   }) =>
       Character(
         id: id ?? this.id,
@@ -96,6 +101,7 @@ class Character {
         nsfwDescription: nsfwDescription ?? this.nsfwDescription,
         currencyName: currencyName ?? this.currencyName,
         currencySymbol: currencySymbol ?? this.currencySymbol,
+        modelOverride: modelOverride ?? this.modelOverride,
       );
 }
 
@@ -165,13 +171,22 @@ class Persona {
 class ChatMessage {
   final String role; // 'user' | 'assistant' | 'system'
   final String content;
+  final DateTime timestamp;
 
-  ChatMessage({required this.role, required this.content});
+  ChatMessage({required this.role, required this.content, DateTime? timestamp})
+      : timestamp = timestamp ?? DateTime.now();
 
-  factory ChatMessage.fromJson(Map<String, dynamic> j) =>
-      ChatMessage(role: j['role'] ?? 'user', content: j['content'] ?? '');
+  factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
+        role: j['role'] ?? 'user',
+        content: j['content'] ?? '',
+        timestamp: DateTime.tryParse(j['timestamp']?.toString() ?? ''),
+      );
 
-  Map<String, dynamic> toJson() => {'role': role, 'content': content};
+  Map<String, dynamic> toJson() => {
+        'role': role,
+        'content': content,
+        'timestamp': timestamp.toIso8601String(),
+      };
 
   bool get isUser => role == 'user';
   bool get isAssistant => role == 'assistant';

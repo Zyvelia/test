@@ -57,7 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
           destinations: _tabs,
           backgroundColor: kBg,
           surfaceTintColor: Colors.transparent,
-          indicatorColor: kPrimary.withOpacity(0.18),
+          indicatorColor: kPrimary.withValues(alpha: 0.18),
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           height: 64,
         ),

@@ -50,7 +50,7 @@ ThemeData buildTheme() {
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: kSurface,
-      indicatorColor: kPrimary.withOpacity(0.22),
+      indicatorColor: kPrimary.withValues(alpha: 0.22),
       labelTextStyle: WidgetStateProperty.all(
         const TextStyle(color: kMuted, fontSize: 11),
       ),
@@ -174,7 +174,7 @@ class CharAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: gradientFor(seed.isNotEmpty ? seed : name),
         borderRadius: r,
-        boxShadow: [BoxShadow(color: accentFor(seed.isNotEmpty ? seed : name).first.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 3))],
+        boxShadow: [BoxShadow(color: accentFor(seed.isNotEmpty ? seed : name).first.withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 3))],
       ),
       alignment: Alignment.center,
       child: Text(
@@ -272,7 +272,7 @@ class AppBackground extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             gradient: RadialGradient(
-              colors: [c.withOpacity(0.20), c.withOpacity(0.0)],
+              colors: [c.withValues(alpha: 0.20), c.withValues(alpha: 0.0)],
             ),
           ),
         ),
@@ -299,7 +299,7 @@ class GradientButton extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: gradient,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.35), blurRadius: 14, offset: const Offset(0, 5))],
+          boxShadow: [BoxShadow(color: kPrimary.withValues(alpha: 0.35), blurRadius: 14, offset: const Offset(0, 5))],
         ),
         child: Material(
           color: Colors.transparent,

@@ -115,7 +115,7 @@ class PersonasScreen extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: const LinearGradient(colors: [kCyan, kPrimary]),
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: kCyan.withOpacity(0.35), blurRadius: 16, offset: const Offset(0, 6))],
+          boxShadow: [BoxShadow(color: kCyan.withValues(alpha: 0.35), blurRadius: 16, offset: const Offset(0, 6))],
         ),
         child: FloatingActionButton.extended(
           backgroundColor: Colors.transparent,
@@ -142,12 +142,12 @@ class _PersonaCard extends StatelessWidget {
     margin: const EdgeInsets.only(bottom: 12),
     decoration: BoxDecoration(
       gradient: LinearGradient(
-        colors: [(isActive ? kCyan : kPrimary).withOpacity(0.14), kCard],
+        colors: [(isActive ? kCyan : kPrimary).withValues(alpha: 0.14), kCard],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
       ),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: (isActive ? kCyan : kBorder).withOpacity(isActive ? 0.6 : 1), width: 1),
+      border: Border.all(color: (isActive ? kCyan : kBorder).withValues(alpha: isActive ? 0.6 : 1), width: 1),
     ),
     child: Padding(
       padding: const EdgeInsets.all(12),
@@ -177,9 +177,9 @@ class _PersonaCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: kCyan.withOpacity(0.15),
+                          color: kCyan.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: kCyan.withOpacity(0.5)),
+                          border: Border.all(color: kCyan.withValues(alpha: 0.5)),
                         ),
                         child: const Text('Active', style: TextStyle(color: kCyan, fontSize: 10, fontWeight: FontWeight.w700)),
                       ),
@@ -511,9 +511,9 @@ class _PersonaSheetState extends State<PersonaSheet> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [kPrimary.withOpacity(0.18), kCyan.withOpacity(0.10)]),
+                      gradient: LinearGradient(colors: [kPrimary.withValues(alpha: 0.18), kCyan.withValues(alpha: 0.10)]),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: kPrimary.withOpacity(0.4)),
+                      border: Border.all(color: kPrimary.withValues(alpha: 0.4)),
                     ),
                     child: Row(
                       children: [

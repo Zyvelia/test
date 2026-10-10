@@ -55,11 +55,13 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _input = TextEditingController();
   final _scrollCtrl = ScrollController();
   List<ChatMessage> _history = [];
   bool _streaming = false;
+  bool _stopRequested = false;
+  bool? _connectionOk;
   String _streamingText = '';
   String? _error;
   bool _showMemory = false;
@@ -72,7 +74,43 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _showWallet = false;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkConnection();
+  }
+
+  Future<void> _checkConnection() async {
+    final settings = context.read<AppProvider>().settings;
+    final error = await OllamaService.instance.testConnection(settings.ollamaUrl);
+    if (mounted) setState(() => _connectionOk = error == null);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      final c = context.read<AppProvider>().activeChar;
+      if (c != null) {
+        final snapshot = List<ChatMessage>.from(_history);
+        if (_streamingText.trim().isNotEmpty) {
+          snapshot.add(ChatMessage(role: 'assistant', content: _parseWalletTags(_streamingText.trim())));
+        }
+        StorageService.instance.saveChat(c.id, snapshot);
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      _checkConnection();
+    }
+  }
+
+  void _stopGeneration() {
+    if (!_streaming) return;
+    setState(() => _stopRequested = true);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _input.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -150,7 +188,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final s = ap.settings;
     final persona = ap.activePersona;
 
-    setState(() { _streaming = true; _streamingText = ''; _error = null; });
+    setState(() { _streaming = true; _stopRequested = false; _streamingText = ''; _error = null; });
     _scrollBottom();
 
     // wallet context appended to system prompt (not a second system message —
@@ -184,11 +222,12 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       await for (final chunk in OllamaService.instance.streamChat(
         baseUrl: s.ollamaUrl,
-        model: s.model,
+        model: c.modelOverride.trim().isNotEmpty ? c.modelOverride.trim() : s.model,
         messages: messages,
         maxReplyTokens: s.maxReplyTokens,
       )) {
         if (!mounted) return;
+        if (_stopRequested) break;
         setState(() => _streamingText += chunk);
         _scrollBottom();
       }
@@ -196,13 +235,13 @@ class _ChatScreenState extends State<ChatScreen> {
       final raw = _streamingText.trim();
       // parse and strip silent wallet tags before displaying
       final response = _parseWalletTags(raw);
-      if (response.isEmpty) {
+      if (response.isEmpty && !_stopRequested) {
         throw Exception('The model returned an empty reply. Try again, or pick a different model in Settings.');
       }
-      _history.add(ChatMessage(role: 'assistant', content: response));
+      if (response.isNotEmpty) _history.add(ChatMessage(role: 'assistant', content: response));
       StorageService.instance.saveChat(c.id, _history);
       if (!mounted) return;
-      setState(() { _streaming = false; _streamingText = ''; });
+      setState(() { _streaming = false; _stopRequested = false; _streamingText = ''; });
       _scrollBottom();
 
       if (extractAfter && _history.where((m) => m.isUser).length % 3 == 0) {
@@ -218,7 +257,8 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _streaming = false;
         _streamingText = '';
-        _error = OllamaService.friendlyError(e);
+        _error = _stopRequested ? null : OllamaService.friendlyError(e);
+        _stopRequested = false;
       });
       _scrollBottom();
     }
@@ -441,6 +481,20 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
         actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 5),
+            child: Tooltip(
+              message: _connectionOk == null ? 'Checking Ollama connection…' : (_connectionOk! ? 'Ollama connected' : 'Ollama disconnected'),
+              child: Center(child: Container(
+                width: 9, height: 9,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: _connectionOk == null ? kMuted : (_connectionOk! ? kGreen : kDanger),
+                  boxShadow: [BoxShadow(color: (_connectionOk == true ? kGreen : (_connectionOk == false ? kDanger : kMuted)).withValues(alpha: 0.35), blurRadius: 5)],
+                ),
+              )),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.history_rounded),
             onPressed: c != null ? _openHistory : null,
@@ -557,6 +611,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     controller: _input,
                     onSend: _send,
                     enabled: !_streaming,
+                    streaming: _streaming,
+                    onStop: _stopGeneration,
                   ),
                 ],
               ),
@@ -677,14 +733,14 @@ class _Bubble extends StatelessWidget {
         gradient: isUser
             ? LinearGradient(colors: userColors, begin: Alignment.topLeft, end: Alignment.bottomRight)
             : LinearGradient(
-                colors: [charColors[0].withOpacity(0.9), charColors[1]],
+                colors: [charColors[0].withValues(alpha: 0.9), charColors[1]],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
         borderRadius: radius,
-        border: isUser ? null : Border.all(color: acc.first.withOpacity(0.35), width: 0.8),
+        border: isUser ? null : Border.all(color: acc.first.withValues(alpha: 0.35), width: 0.8),
         boxShadow: isUser
-            ? [BoxShadow(color: userColors[0].withOpacity(0.25), blurRadius: 10, offset: const Offset(0, 3))]
+            ? [BoxShadow(color: userColors[0].withValues(alpha: 0.25), blurRadius: 10, offset: const Offset(0, 3))]
             : null,
       ),
       child: isUser
@@ -732,7 +788,26 @@ class _Bubble extends StatelessWidget {
                     ],
                   ),
                 ),
-                bubble,
+                GestureDetector(
+                  onLongPress: () async {
+                    await Clipboard.setData(ClipboardData(text: message.content));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Message copied'),
+                        duration: Duration(milliseconds: 1200),
+                        behavior: SnackBarBehavior.floating,
+                      ));
+                    }
+                  },
+                  child: bubble,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, right: 4, top: 4),
+                  child: Text(
+                    TimeOfDay.fromDateTime(message.timestamp).format(context),
+                    style: const TextStyle(color: kMuted, fontSize: 10),
+                  ),
+                ),
               ],
             ),
           ),
@@ -751,24 +826,38 @@ class _CaiText extends StatelessWidget {
 
   List<InlineSpan> _parse() {
     final spans = <InlineSpan>[];
-    int i = 0;
+    var i = 0;
     while (i < text.length) {
-      final star = text.indexOf('*', i);
-      if (star == -1) {
+      // Handle **bold** before *action* so paired delimiters are not misread.
+      if (text.startsWith('**', i)) {
+        final end = text.indexOf('**', i + 2);
+        if (end >= 0) {
+          spans.add(TextSpan(
+            text: text.substring(i + 2, end),
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ));
+          i = end + 2;
+          continue;
+        }
+      }
+      if (text[i] == '*') {
+        final end = text.indexOf('*', i + 1);
+        if (end >= 0 && end > i + 1 && !text.startsWith('**', end)) {
+          spans.add(TextSpan(
+            text: text.substring(i + 1, end),
+            style: const TextStyle(color: Color(0xFFB4A8FF), fontStyle: FontStyle.italic),
+          ));
+          i = end + 1;
+          continue;
+        }
+      }
+      final nextStar = text.indexOf('*', i + 1);
+      if (nextStar == -1) {
         spans.add(TextSpan(text: text.substring(i)));
         break;
       }
-      final end = text.indexOf('*', star + 1);
-      if (end == -1) {
-        spans.add(TextSpan(text: text.substring(i)));
-        break;
-      }
-      if (star > i) spans.add(TextSpan(text: text.substring(i, star)));
-      spans.add(TextSpan(
-        text: text.substring(star + 1, end),
-        style: const TextStyle(color: Color(0xFFB4A8FF), fontStyle: FontStyle.italic),
-      ));
-      i = end + 1;
+      spans.add(TextSpan(text: text.substring(i, nextStar)));
+      i = nextStar;
     }
     return spans;
   }
@@ -876,7 +965,7 @@ class _TypingIndicatorState extends State<_TypingIndicator> {
                 Text(
                   _phrase,
                   style: TextStyle(
-                    color: acc.first.withOpacity(0.75),
+                    color: acc.first.withValues(alpha: 0.75),
                     fontSize: 13,
                     fontStyle: FontStyle.italic,
                     height: 1.3,
@@ -920,7 +1009,7 @@ class _DotsState extends State<_Dots> with SingleTickerProviderStateMixin {
                 margin: const EdgeInsets.symmetric(horizontal: 2.5),
                 width: 6, height: 6,
                 decoration: BoxDecoration(
-                  color: kMuted.withOpacity(0.4 + 0.55 * (1 - (2 * t - 1).abs())),
+                  color: kMuted.withValues(alpha: 0.4 + 0.55 * (1 - (2 * t - 1).abs())),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -940,9 +1029,9 @@ class _ErrorBubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8, top: 4),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: kDanger.withOpacity(0.08),
+          color: kDanger.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: kDanger.withOpacity(0.35)),
+          border: Border.all(color: kDanger.withValues(alpha: 0.35)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -964,7 +1053,7 @@ class _ErrorBubble extends StatelessWidget {
               label: const Text('Retry'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: kDanger,
-                side: BorderSide(color: kDanger.withOpacity(0.5)),
+                side: BorderSide(color: kDanger.withValues(alpha: 0.5)),
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               ),
             ),
@@ -979,8 +1068,10 @@ class _InputBar extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onSend;
   final bool enabled;
+  final bool streaming;
+  final VoidCallback onStop;
 
-  const _InputBar({required this.controller, required this.onSend, required this.enabled});
+  const _InputBar({required this.controller, required this.onSend, required this.enabled, required this.streaming, required this.onStop});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -1025,18 +1116,18 @@ class _InputBar extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: enabled ? onSend : null,
+                onTap: streaming ? onStop : (enabled ? onSend : null),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 150),
                   width: 46,
                   height: 46,
                   decoration: BoxDecoration(
-                    gradient: enabled ? kGradient : null,
-                    color: enabled ? null : kBorder,
+                    gradient: streaming || enabled ? kGradient : null,
+                    color: streaming || enabled ? null : kBorder,
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(Icons.arrow_upward_rounded,
-                      color: enabled ? Colors.white : kMuted, size: 22),
+                  child: Icon(streaming ? Icons.stop_rounded : Icons.arrow_upward_rounded,
+                      color: streaming || enabled ? Colors.white : kMuted, size: 22),
                 ),
               ),
             ],
@@ -1148,7 +1239,7 @@ class _MemoryPanelState extends State<_MemoryPanel> {
   Widget build(BuildContext context) => Container(
     width: (MediaQuery.of(context).size.width * 0.72).clamp(220.0, 300.0).toDouble(),
     decoration: BoxDecoration(
-      color: kSurface.withOpacity(0.97),
+      color: kSurface.withValues(alpha: 0.97),
       border: const Border(left: BorderSide(color: kBorder, width: 0.5)),
       boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 20)],
     ),
@@ -1204,7 +1295,7 @@ class _MemoryPanelState extends State<_MemoryPanel> {
                     child: Container(
                       margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                       padding: const EdgeInsets.all(9),
-                      decoration: BoxDecoration(color: kPrimary.withOpacity(0.08), borderRadius: BorderRadius.circular(7), border: Border.all(color: kPrimary.withOpacity(0.25))),
+                      decoration: BoxDecoration(color: kPrimary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(7), border: Border.all(color: kPrimary.withValues(alpha: 0.25))),
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         const Text('STORY CONTINUITY', style: TextStyle(color: kPrimary, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
                         const SizedBox(height: 6),
@@ -1270,7 +1361,7 @@ class _MemoryPanelState extends State<_MemoryPanel> {
                 onTap: _add,
                 child: Container(
                   padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: kPrimary.withOpacity(0.15), borderRadius: BorderRadius.circular(6)),
+                  decoration: BoxDecoration(color: kPrimary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(6)),
                   child: const Icon(Icons.add, size: 16, color: kPrimary),
                 ),
               ),
@@ -1353,7 +1444,7 @@ class _AppearanceSheetState extends State<_AppearanceSheet> {
                             margin: const EdgeInsets.only(right: 8),
                             padding: const EdgeInsets.symmetric(vertical: 10),
                             decoration: BoxDecoration(
-                              color: active ? kPrimary.withOpacity(0.18) : kCard,
+                              color: active ? kPrimary.withValues(alpha: 0.18) : kCard,
                               borderRadius: BorderRadius.circular(s == BubbleStyle.sharp ? 4 : s == BubbleStyle.rounded ? 14 : 10),
                               border: Border.all(color: active ? kPrimary : kBorder, width: active ? 1.5 : 1),
                             ),
@@ -1398,7 +1489,7 @@ class _AppearanceSheetState extends State<_AppearanceSheet> {
                               color: active ? kPrimary : kBorder,
                               width: active ? 2 : 1,
                             ),
-                            boxShadow: active ? [BoxShadow(color: kPrimary.withOpacity(0.4), blurRadius: 8)] : null,
+                            boxShadow: active ? [BoxShadow(color: kPrimary.withValues(alpha: 0.4), blurRadius: 8)] : null,
                           ),
                           child: active
                               ? const Icon(Icons.check_rounded, color: Colors.white, size: 22)
@@ -1490,7 +1581,7 @@ class _ColorRow extends StatelessWidget {
                     color: active ? kPrimary : kBorder,
                     width: active ? 2.5 : 1.5,
                   ),
-                  boxShadow: active ? [BoxShadow(color: kPrimary.withOpacity(0.4), blurRadius: 6)] : null,
+                  boxShadow: active ? [BoxShadow(color: kPrimary.withValues(alpha: 0.4), blurRadius: 6)] : null,
                 ),
                 child: active ? const Icon(Icons.check_rounded, color: Colors.white, size: 18) : null,
               ),
@@ -1617,7 +1708,7 @@ class _PersonaTile extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 6),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: active ? kPrimary.withOpacity(0.12) : kCard,
+            color: active ? kPrimary.withValues(alpha: 0.12) : kCard,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: active ? kPrimary : kBorder, width: active ? 1.5 : 1),
           ),
@@ -1763,7 +1854,7 @@ class _HistorySheetState extends State<_HistorySheet> {
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.only(right: 16),
                             decoration: BoxDecoration(
-                              color: kDanger.withOpacity(0.15),
+                              color: kDanger.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(14),
                             ),
                             child: const Icon(Icons.delete_outline, color: kDanger),

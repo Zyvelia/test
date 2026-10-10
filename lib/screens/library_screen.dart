@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../models/models.dart';
 import '../providers/app_provider.dart';
 import '../services/ollama_service.dart';
+import '../services/storage_service.dart';
 import '../theme.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class LibraryScreen extends StatefulWidget {
 class _LibraryScreenState extends State<LibraryScreen> {
   final _search = TextEditingController();
   String _catFilter = 'All';
+  String _sortMode = 'A–Z';
   static const _cats = [
     'All', 'Original', 'Anime', 'Fantasy', 'Games', 'Sci-Fi',
     'Historical', 'Roleplay', 'Horror', 'Slice of Life', 'Other',
@@ -32,7 +34,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (q.isEmpty) return true;
       final hay = '${c.name} ${c.category} ${c.tags.join(' ')} ${c.personality}'.toLowerCase();
       return hay.contains(q);
-    }).toList();
+    }).toList()
+      ..sort((a, b) {
+        switch (_sortMode) {
+          case 'Newest':
+            return all.indexOf(b).compareTo(all.indexOf(a));
+          case 'Recently chatted':
+            final ah = StorageService.instance.loadChat(a.id);
+            final bh = StorageService.instance.loadChat(b.id);
+            final at = ah.isEmpty ? DateTime.fromMillisecondsSinceEpoch(0) : ah.last.timestamp;
+            final bt = bh.isEmpty ? DateTime.fromMillisecondsSinceEpoch(0) : bh.last.timestamp;
+            return bt.compareTo(at);
+          default:
+            return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        }
+      });
   }
 
   void _openCreate(BuildContext context) async {
@@ -87,6 +103,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
       appBar: AppBar(
         title: const GradientText('Characters', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26)),
         centerTitle: false,
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: 'Sort characters',
+            icon: const Icon(Icons.sort_rounded, color: kMuted),
+            initialValue: _sortMode,
+            onSelected: (v) => setState(() => _sortMode = v),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'A–Z', child: Text('A–Z')),
+              PopupMenuItem(value: 'Recently chatted', child: Text('Recently chatted')),
+              PopupMenuItem(value: 'Newest', child: Text('Newest')),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -117,9 +146,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   label: Text(cat, style: TextStyle(color: active ? Colors.white : col, fontSize: 12.5, fontWeight: FontWeight.w600)),
                   selected: active,
                   onSelected: (_) => setState(() => _catFilter = cat),
-                  backgroundColor: col.withOpacity(0.10),
-                  selectedColor: col.withOpacity(0.55),
-                  side: BorderSide(color: col.withOpacity(active ? 0.9 : 0.35), width: 1),
+                  backgroundColor: col.withValues(alpha: 0.10),
+                  selectedColor: col.withValues(alpha: 0.55),
+                  side: BorderSide(color: col.withValues(alpha: active ? 0.9 : 0.35), width: 1),
                   showCheckmark: false,
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                 );
@@ -161,7 +190,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         decoration: BoxDecoration(
           gradient: kGradient,
           borderRadius: BorderRadius.circular(18),
-          boxShadow: [BoxShadow(color: kPrimary.withOpacity(0.4), blurRadius: 16, offset: const Offset(0, 6))],
+          boxShadow: [BoxShadow(color: kPrimary.withValues(alpha: 0.4), blurRadius: 16, offset: const Offset(0, 6))],
         ),
         child: FloatingActionButton.extended(
           backgroundColor: Colors.transparent,
@@ -191,13 +220,13 @@ class _CharCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [acc.first.withOpacity(0.16), kCard, kCard],
+          colors: [acc.first.withValues(alpha: 0.16), kCard, kCard],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: acc.first.withOpacity(0.35), width: 1),
-        boxShadow: [BoxShadow(color: acc.first.withOpacity(0.10), blurRadius: 14, offset: const Offset(0, 4))],
+        border: Border.all(color: acc.first.withValues(alpha: 0.35), width: 1),
+        boxShadow: [BoxShadow(color: acc.first.withValues(alpha: 0.10), blurRadius: 14, offset: const Offset(0, 4))],
       ),
       child: Material(
         color: Colors.transparent,
@@ -226,7 +255,7 @@ class _CharCard extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: kDanger.withOpacity(0.15),
+                                color: kDanger.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: const Text('18+',
@@ -277,9 +306,9 @@ class _CharCard extends StatelessWidget {
   Widget _pill(String t, Color c) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         decoration: BoxDecoration(
-          color: c.withOpacity(0.16),
+          color: c.withValues(alpha: 0.16),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: c.withOpacity(0.35), width: 0.7),
+          border: Border.all(color: c.withValues(alpha: 0.35), width: 0.7),
         ),
         child: Text(t, style: TextStyle(color: c, fontSize: 11, fontWeight: FontWeight.w500)),
       );
@@ -298,7 +327,7 @@ class CharacterSheet extends StatefulWidget {
 
 class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  late final TextEditingController _name, _avatar, _personality, _scenario, _greeting, _tags, _nsfwDesc, _currencyName, _currencySymbol;
+  late final TextEditingController _name, _avatar, _personality, _scenario, _greeting, _tags, _nsfwDesc, _currencyName, _currencySymbol, _modelOverride;
   late final TextEditingController _concept;
   String _category = 'Original';
   String _visibility = 'Private';
@@ -321,6 +350,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
     _nsfwDesc       = TextEditingController(text: c?.nsfwDescription ?? '');
     _currencyName   = TextEditingController(text: c?.currencyName ?? '');
     _currencySymbol = TextEditingController(text: c?.currencySymbol ?? '');
+    _modelOverride = TextEditingController(text: c?.modelOverride ?? '');
     _category    = c?.category ?? 'Original';
     _visibility  = c?.visibility ?? 'Private';
     _nsfw        = c?.nsfw ?? false;
@@ -329,7 +359,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
   @override
   void dispose() {
     _tabs.dispose();
-    for (final c in [_concept, _name, _avatar, _personality, _scenario, _greeting, _tags, _nsfwDesc, _currencyName, _currencySymbol]) {
+    for (final c in [_concept, _name, _avatar, _personality, _scenario, _greeting, _tags, _nsfwDesc, _currencyName, _currencySymbol, _modelOverride]) {
       c.dispose();
     }
     super.dispose();
@@ -525,6 +555,7 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
       nsfwDescription: _nsfwDesc.text.trim(),
       currencyName:   _currencyName.text.trim(),
       currencySymbol: _currencySymbol.text.trim(),
+      modelOverride: _modelOverride.text.trim(),
     );
   }
 
@@ -666,9 +697,9 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(colors: [kPrimary.withOpacity(0.18), kCyan.withOpacity(0.10)]),
+                              gradient: LinearGradient(colors: [kPrimary.withValues(alpha: 0.18), kCyan.withValues(alpha: 0.10)]),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: kPrimary.withOpacity(0.4)),
+                              border: Border.all(color: kPrimary.withValues(alpha: 0.4)),
                             ),
                             child: Row(
                               children: [
@@ -767,6 +798,20 @@ class _CharacterSheetState extends State<CharacterSheet> with SingleTickerProvid
                             ),
                           ),
                         ]),
+                        const SizedBox(height: 20),
+                        const Text('Model override (optional)', style: TextStyle(color: kMuted, fontSize: 12, fontWeight: FontWeight.w500)),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _modelOverride,
+                          scrollPadding: const EdgeInsets.only(bottom: 120),
+                          decoration: InputDecoration(
+                            hintText: 'Default: ${widget.settings.model}',
+                            helperText: 'Enter an installed Ollama model name. Leave blank to use Settings.',
+                            helperMaxLines: 2,
+                            isDense: true,
+                          ),
+                          style: const TextStyle(color: kText, fontSize: 13),
+                        ),
                         const SizedBox(height: 20),
                         SwitchListTile(
                           title: const Text('Enable 18+ / NSFW', style: TextStyle(color: kText)),

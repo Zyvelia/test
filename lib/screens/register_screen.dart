@@ -107,9 +107,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       decoration: BoxDecoration(
-                        color: kDanger.withOpacity(0.1),
+                        color: kDanger.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: kDanger.withOpacity(0.3)),
+                        border: Border.all(color: kDanger.withValues(alpha: 0.3)),
                       ),
                       child: Text(_error!, style: const TextStyle(color: kDanger, fontSize: 13)),
                     ),

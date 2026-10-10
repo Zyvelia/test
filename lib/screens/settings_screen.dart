@@ -213,7 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: TextButton(
               onPressed: _save,
               style: TextButton.styleFrom(
-                backgroundColor: kPrimary.withOpacity(0.18),
+                backgroundColor: kPrimary.withValues(alpha: 0.18),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 padding: const EdgeInsets.symmetric(horizontal: 18),
               ),
@@ -259,9 +259,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 margin: const EdgeInsets.only(top: 10),
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: (_statusOk ? kGreen : kDanger).withOpacity(0.10),
+                  color: (_statusOk ? kGreen : kDanger).withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: (_statusOk ? kGreen : kDanger).withOpacity(0.35)),
+                  border: Border.all(color: (_statusOk ? kGreen : kDanger).withValues(alpha: 0.35)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,7 +307,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       label: Text(m, style: TextStyle(fontSize: 12, color: _model.text.trim() == m ? kPrimary : kMuted)),
                       selected: _model.text.trim() == m,
                       onSelected: (_) => setState(() => _model.text = m),
-                      selectedColor: kPrimary.withOpacity(0.14),
+                      selectedColor: kPrimary.withValues(alpha: 0.14),
                       backgroundColor: kSurface,
                       showCheckmark: false,
                       side: BorderSide(color: _model.text.trim() == m ? kPrimary : kBorder),
@@ -422,7 +422,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: col.withOpacity(0.18),
+                color: col.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(m[0] as IconData, size: 16, color: col),
@@ -436,12 +436,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [col.withOpacity(0.08), kCard],
+              colors: [col.withValues(alpha: 0.08), kCard],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: col.withOpacity(0.28), width: 0.9),
+            border: Border.all(color: col.withValues(alpha: 0.28), width: 0.9),
           ),
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
@@ -500,7 +500,7 @@ class _Step extends StatelessWidget {
         Container(
           width: 20, height: 20,
           alignment: Alignment.center,
-          decoration: BoxDecoration(color: kPrimary.withOpacity(0.15), shape: BoxShape.circle),
+          decoration: BoxDecoration(color: kPrimary.withValues(alpha: 0.15), shape: BoxShape.circle),
           child: Text(n, style: const TextStyle(color: kPrimary, fontSize: 11, fontWeight: FontWeight.w700)),
         ),
         const SizedBox(width: 10),
