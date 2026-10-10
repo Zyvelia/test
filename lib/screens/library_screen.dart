@@ -1,6 +1,8 @@
 // library_screen.dart — character library
 
 import 'dart:io';
+import 'dart:convert';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -93,6 +95,53 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
+  Future<void> _exportCharacter(Character c) async {
+    final encoded = const JsonEncoder.withIndent('  ').convert({'format': 'charchat-character', 'version': 1, 'character': c.toJson()});
+    await Clipboard.setData(ClipboardData(text: encoded));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Character card for ${c.name} copied as JSON.')));
+  }
+
+  Future<void> _importCharacter() async {
+    final controller = TextEditingController();
+    final raw = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Import character card'),
+      content: SizedBox(width: 480, child: TextField(controller: controller, maxLines: 10, minLines: 5,
+        decoration: const InputDecoration(hintText: 'Paste a CharChat character JSON card here'))),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('Import'))],
+    ));
+    controller.dispose();
+    if (raw == null || raw.trim().isEmpty || !mounted) return;
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final data = decoded['character'] is Map<String, dynamic> ? decoded['character'] as Map<String, dynamic> : decoded;
+      final imported = Character.fromJson(data).copyWith(id: const Uuid().v4(), visibility: 'Private');
+      if (imported.name.trim().isEmpty) throw const FormatException('Character name is missing');
+      context.read<AppProvider>().saveCharacter(imported);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported ${imported.name} as a private character.')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not import character card: $e')));
+    }
+  }
+
+  void _openShareHub() {
+    final chars = context.read<AppProvider>().characters;
+    showModalBottomSheet(context: context, backgroundColor: Colors.transparent, builder: (ctx) => SafeArea(
+      child: Container(decoration: const BoxDecoration(color: kSurface, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        padding: const EdgeInsets.all(18), child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Character sharing hub', style: TextStyle(color: kText, fontSize: 19, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4), const Text('Import/export works offline. A public community gallery and ratings require a hosted backend and are not enabled yet.', style: TextStyle(color: kMuted, fontSize: 12)),
+          const SizedBox(height: 12), ListTile(leading: const Icon(Icons.file_upload_outlined, color: kCyan), title: const Text('Import character JSON'), onTap: () { Navigator.pop(ctx); _importCharacter(); }),
+          const Divider(color: kBorder),
+          if (chars.isEmpty) const Text('Create a character first.', style: TextStyle(color: kMuted)) else ...chars.map((c) => ListTile(
+            leading: const Icon(Icons.ios_share_rounded, color: kPrimary), title: Text(c.name, style: const TextStyle(color: kText)),
+            subtitle: Text('${c.category} · export JSON', style: const TextStyle(color: kMuted, fontSize: 11)),
+            onTap: () { Navigator.pop(ctx); _exportCharacter(c); },
+          )),
+        ])),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final ap = context.watch<AppProvider>();
@@ -104,6 +153,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         title: const GradientText('Characters', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 26)),
         centerTitle: false,
         actions: [
+          IconButton(icon: const Icon(Icons.ios_share_outlined, color: kMuted), tooltip: 'Character sharing', onPressed: _openShareHub),
           PopupMenuButton<String>(
             tooltip: 'Sort characters',
             icon: const Icon(Icons.sort_rounded, color: kMuted),

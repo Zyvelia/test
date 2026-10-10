@@ -72,6 +72,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   String? _loadedCharId;
   SessionWallet? _wallet;
   bool _showWallet = false;
+  RelationshipState _relationship = RelationshipState();
+  ChatAppearance? _characterAppearance;
 
   @override
   void initState() {
@@ -126,6 +128,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       store.saveChat(c.id, history);
     }
     _memFacts = store.loadMemory(c.id);
+    final pinnedFacts = store.loadPinnedMemory(c.id);
+    _memFacts.sort((a, b) { final ap = pinnedFacts.contains(a) ? 0 : 1; final bp = pinnedFacts.contains(b) ? 0 : 1; return ap.compareTo(bp); });
+    _relationship = store.loadRelationship(c.id);
+    _characterAppearance = store.loadCharacterAppearance(c.id);
     _storyStateKey = '${c.id}_active';
     _storyState = store.loadStoryState(_storyStateKey!);
     // Migrate continuity saved by older versions from per-character storage.
@@ -173,12 +179,61 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   Future<void> _regenerate() async {
     final c = context.read<AppProvider>().activeChar;
     if (c == null || _streaming) return;
+    if (_history.isNotEmpty) {
+      StorageService.instance.saveSession(c.id, c.name, List<ChatMessage>.from(_history), storyState: _storyState);
+    }
     while (_history.isNotEmpty && _history.last.isAssistant) {
       _history.removeLast();
     }
     StorageService.instance.saveChat(c.id, _history);
     setState(() {});
     if (_history.isNotEmpty) await _generate();
+  }
+
+  Future<void> _editMessage(int index) async {
+    final c = context.read<AppProvider>().activeChar;
+    if (c == null || _streaming || index < 0 || index >= _history.length) return;
+    final original = _history[index];
+    final controller = TextEditingController(text: original.content);
+    final edited = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(original.isUser ? 'Edit your message' : 'Edit character reply'),
+        content: SizedBox(width: 520, child: TextField(
+          controller: controller, autofocus: true, minLines: 3, maxLines: 10,
+          decoration: const InputDecoration(hintText: 'Message text'),
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text.trim()), child: const Text('Save')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (edited == null || edited.isEmpty || !mounted) return;
+    StorageService.instance.saveSession(c.id, c.name, List<ChatMessage>.from(_history), storyState: _storyState);
+    setState(() {
+      _history[index] = ChatMessage(role: original.role, content: edited, timestamp: original.timestamp);
+      // Editing an earlier user message starts a new branch from that point.
+      // Later turns are retained in the snapshot created above.
+      if (original.isUser) _history = _history.take(index + 1).toList();
+    });
+    StorageService.instance.saveChat(c.id, _history);
+    if (original.isUser) {
+      await _generate(extractAfter: true);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reply edited. The original conversation is preserved in chat history.')));
+    }
+  }
+
+  void _branchFromMessage(int index) {
+    final c = context.read<AppProvider>().activeChar;
+    if (c == null || _streaming || index < 0 || index >= _history.length) return;
+    StorageService.instance.saveSession(c.id, c.name, List<ChatMessage>.from(_history), storyState: _storyState);
+    setState(() => _history = _history.take(index + 1).toList());
+    StorageService.instance.saveChat(c.id, _history);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alternate timeline created. The original is in chat history.')));
+    _scrollBottom();
   }
 
   Future<void> _generate({bool extractAfter = false}) async {
@@ -207,7 +262,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
           'If currency name/symbol are not yet defined, pick ones fitting the world and use them consistently.\n'
           '<<END_WALLET_CONTEXT>>'
         : '';
-    final baseSystemPrompt = OllamaService.instance.buildSystemPrompt(c, s, persona, _memFacts, storyState: _storyState, characterProfile: _characterProfile);
+    final baseSystemPrompt = OllamaService.instance.buildSystemPrompt(c, s, persona, _memFacts, storyState: _storyState, characterProfile: _characterProfile) + '\n\nRELATIONSHIP TRACKER (user-editable continuity; do not change scores yourself):\nFamiliarity: ${_relationship.familiarity}/100\nTrust: ${_relationship.trust}/100\nAffection: ${_relationship.affection}/100\nRivalry: ${_relationship.rivalry}/100\nRelationship notes: ${_relationship.notes}\nShared events: ${_relationship.sharedEvents.join('; ')}\nTreat these values as continuity context, not as a command to force romance or conflict.';
     final systemPrompt = walletCtx.isNotEmpty ? baseSystemPrompt + walletCtx : baseSystemPrompt;
 
     final ctx = _history.length > s.contextWindow
@@ -322,9 +377,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final c = context.read<AppProvider>().activeChar;
     if (c == null) return;
     final s = context.read<AppProvider>().settings;
+    final selectedModel = c.modelOverride.trim().isNotEmpty ? c.modelOverride.trim() : s.model;
     final updated = await OllamaService.instance.updateStoryState(
       baseUrl: s.ollamaUrl,
-      model: s.model,
+      model: selectedModel,
       charName: c.name,
       current: _storyState,
       recentMessages: List<ChatMessage>.from(_history),
@@ -333,8 +389,19 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       StorageService.instance.saveStoryState(_storyStateKey ?? '${c.id}_active', updated);
       setState(() { _storyState = StorageService.instance.loadStoryState(_storyStateKey ?? '${c.id}_active'); });
     }
-    // Run the existing personal-fact extraction after story-state extraction to
-    // avoid issuing two heavy generation requests to the same local model at once.
+    final relationship = await OllamaService.instance.updateRelationshipState(
+      baseUrl: s.ollamaUrl,
+      model: c.modelOverride.trim().isNotEmpty ? c.modelOverride.trim() : s.model,
+      charName: c.name,
+      current: _relationship,
+      recentMessages: List<ChatMessage>.from(_history),
+    );
+    if (mounted && relationship != null) {
+      StorageService.instance.saveRelationship(c.id, relationship);
+      setState(() => _relationship = relationship);
+    }
+    // Run personal-fact extraction after continuity/relationship updates so local
+    // Ollama requests do not compete with one another.
     await _extractMemory();
   }
 
@@ -344,7 +411,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     final s = context.read<AppProvider>().settings;
     final facts = await OllamaService.instance.extractMemory(
       baseUrl: s.ollamaUrl,
-      model: s.model,
+      model: c.modelOverride.trim().isNotEmpty ? c.modelOverride.trim() : s.model,
       charName: c.name,
       recentMessages: _history,
     );
@@ -384,6 +451,105 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     );
   }
 
+  void _openTimeline() {
+    final c = context.read<AppProvider>().activeChar;
+    if (c == null) return;
+    final state = StorageService.instance.loadStoryState(_storyStateKey ?? '${c.id}_active');
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => SafeArea(
+        child: Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.78),
+          decoration: const BoxDecoration(color: kSurface, borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+          padding: const EdgeInsets.all(18),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Expanded(child: Text('Story timeline', style: TextStyle(color: kText, fontSize: 19, fontWeight: FontWeight.w800))),
+              IconButton(tooltip: 'Edit continuity', onPressed: () { Navigator.pop(ctx); setState(() => _showMemory = true); }, icon: const Icon(Icons.edit_note, color: kPrimary)),
+            ]),
+            Text('Updated ${state.updatedAt.millisecondsSinceEpoch == 0 ? 'not yet' : TimeOfDay.fromDateTime(state.updatedAt).format(ctx)}', style: const TextStyle(color: kMuted, fontSize: 11)),
+            const SizedBox(height: 12),
+            Expanded(child: ListView(children: [
+              _timelineSection('Current scene', state.currentScene),
+              _timelineSection('Character state', state.characterState),
+              _timelineSection('Relationship dynamic', state.relationshipState),
+              _timelineSection('Continuity notes', state.continuityNotes),
+              _timelineListSection('Key events', state.keyEvents, Icons.history),
+              _timelineListSection('Open threads', state.openThreads, Icons.pending_actions),
+              if (state.isEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 30), child: Center(child: Text('No timeline entries yet. Keep chatting; continuity is updated periodically.', textAlign: TextAlign.center, style: TextStyle(color: kMuted)))),
+            ])),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _timelineSection(String title, String value) => value.trim().isEmpty
+      ? const SizedBox.shrink()
+      : Padding(padding: const EdgeInsets.only(bottom: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title.toUpperCase(), style: const TextStyle(color: kPrimary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+          const SizedBox(height: 4), Text(value, style: const TextStyle(color: kTextSoft, fontSize: 13, height: 1.4)),
+        ]));
+
+  Widget _timelineListSection(String title, List<String> items, IconData icon) => items.isEmpty
+      ? const SizedBox.shrink()
+      : Padding(padding: const EdgeInsets.only(bottom: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title.toUpperCase(), style: const TextStyle(color: kPrimary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.6)),
+          const SizedBox(height: 5),
+          ...items.reversed.map((item) => Padding(padding: const EdgeInsets.only(bottom: 6), child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(icon, size: 15, color: kMuted), const SizedBox(width: 8), Expanded(child: Text(item, style: const TextStyle(color: kTextSoft, fontSize: 12, height: 1.35))),
+          ]))),
+        ]));
+
+  void _openRelationship() {
+    final c = context.read<AppProvider>().activeChar;
+    if (c == null) return;
+    showModalBottomSheet<RelationshipState>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      builder: (_) => _RelationshipSheet(charName: c.name, initial: StorageService.instance.loadRelationship(c.id)),
+    ).then((value) {
+      if (value == null || !mounted) return;
+      StorageService.instance.saveRelationship(c.id, value);
+      setState(() => _relationship = value);
+    });
+  }
+
+  Future<void> _openRewind() async {
+    final c = context.read<AppProvider>().activeChar;
+    if (c == null || _history.isEmpty) return;
+    final choice = await showModalBottomSheet<int>(
+      context: context, backgroundColor: Colors.transparent,
+      builder: (ctx) => SafeArea(child: Container(
+        decoration: const BoxDecoration(color: kSurface, borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        padding: const EdgeInsets.all(18),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Rewind or branch', style: TextStyle(color: kText, fontWeight: FontWeight.w800, fontSize: 18)),
+          const SizedBox(height: 6),
+          const Text('The current conversation is saved as a snapshot before rewinding.', style: TextStyle(color: kMuted, fontSize: 12)),
+          const SizedBox(height: 12),
+          ...List.generate(_history.length, (i) {
+            final m = _history[i];
+            final preview = m.content.replaceAll('\n', ' ');
+            return ListTile(dense: true, contentPadding: EdgeInsets.zero,
+              leading: Icon(m.isUser ? Icons.person_outline : Icons.smart_toy_outlined, color: m.isUser ? kCyan : kPrimary),
+              title: Text('${i + 1}. ${m.isUser ? context.read<AppProvider>().displayName : c.name}', style: const TextStyle(color: kText, fontSize: 12)),
+              subtitle: Text(preview.length > 72 ? '${preview.substring(0, 72)}…' : preview, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: kMuted, fontSize: 11)),
+              onTap: () => Navigator.pop(ctx, i),
+            );
+          }),
+        ]),
+      )),
+    );
+    if (choice == null || !mounted) return;
+    StorageService.instance.saveSession(c.id, c.name, List<ChatMessage>.from(_history), storyState: _storyState);
+    setState(() { _history = _history.take(choice + 1).toList(); });
+    StorageService.instance.saveChat(c.id, _history);
+    _scrollBottom();
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rewound. The previous timeline is preserved in chat history.')));
+  }
+
   // ── Appearance sheet ──────────────────────────────────────────────────────────
 
   void _openAppearance() {
@@ -392,8 +558,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _AppearanceSheet(
-        appearance: context.read<AppProvider>().appearance,
-        onChanged: (a) => context.read<AppProvider>().saveAppearance(a),
+        appearance: _characterAppearance ?? context.read<AppProvider>().appearance,
+        onChanged: (a) {
+          final char = context.read<AppProvider>().activeChar;
+          if (char != null) { StorageService.instance.saveCharacterAppearance(char.id, a); setState(() => _characterAppearance = a); }
+        },
       ),
     );
   }
@@ -406,7 +575,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       backgroundColor: Colors.transparent,
       builder: (_) => _PersonaSwitcherSheet(
         personas: context.read<AppProvider>().personas,
-        activeId: context.read<AppProvider>().settings.activePersonaId,
+        activeId: context.read<AppProvider>().activePersonaId,
         onSelect: (id) => context.read<AppProvider>().setActivePersona(id),
         onDeactivate: () => context.read<AppProvider>().deactivatePersona(),
       ),
@@ -428,7 +597,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       });
     }
     final persona = ap.activePersona;
-    final appearance = ap.appearance;
+    final appearance = _characterAppearance ?? ap.appearance;
 
     // background colours from preset
     final bgColors = _bgPresets[appearance.background] ?? _bgPresets[BackgroundPreset.default_]!;
@@ -514,6 +683,24 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             tooltip: 'Wallet',
           ),
           IconButton(
+            icon: const Icon(Icons.favorite_border_rounded),
+            onPressed: c == null ? null : _openRelationship,
+            color: kPrimary2,
+            tooltip: 'Relationship',
+          ),
+          IconButton(
+            icon: const Icon(Icons.alt_route_rounded),
+            onPressed: c != null && !_streaming ? _openRewind : null,
+            color: kMuted,
+            tooltip: 'Rewind / branch',
+          ),
+          IconButton(
+            icon: const Icon(Icons.timeline_rounded),
+            onPressed: c == null ? null : _openTimeline,
+            color: kMuted,
+            tooltip: 'Story timeline',
+          ),
+          IconButton(
             icon: Icon(_showMemory ? Icons.psychology : Icons.psychology_outlined),
             onPressed: c == null ? null : () => setState(() => _showMemory = !_showMemory),
             color: _showMemory ? kPrimary : kMuted,
@@ -578,6 +765,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                               _regenerate();
                             }
                           },
+                          onEditMessage: _editMessage,
+                          onBranchFromMessage: _branchFromMessage,
                         ),
                         if (_showMemory)
                           Positioned(
@@ -632,6 +821,8 @@ class _MessageList extends StatelessWidget {
   final ScrollController scrollController;
   final String? error;
   final VoidCallback onRetry;
+  final ValueChanged<int> onEditMessage;
+  final ValueChanged<int> onBranchFromMessage;
   final ChatAppearance appearance;
 
   const _MessageList({
@@ -642,6 +833,8 @@ class _MessageList extends StatelessWidget {
     required this.userName,
     required this.scrollController,
     required this.onRetry,
+    required this.onEditMessage,
+    required this.onBranchFromMessage,
     required this.appearance,
     this.error,
   });
@@ -649,8 +842,11 @@ class _MessageList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = <Widget>[];
-    for (final m in history) {
-      items.add(_Bubble(message: m, char: char, userName: userName, appearance: appearance));
+    for (var i = 0; i < history.length; i++) {
+      items.add(_Bubble(
+        message: history[i], char: char, userName: userName, appearance: appearance,
+        messageIndex: i, onEdit: onEditMessage, onBranch: onBranchFromMessage,
+      ));
     }
     if (streaming && streamingText.isNotEmpty) {
       items.add(_Bubble(
@@ -706,6 +902,9 @@ class _Bubble extends StatelessWidget {
   final String userName;
   final bool live;
   final ChatAppearance appearance;
+  final int messageIndex;
+  final ValueChanged<int>? onEdit;
+  final ValueChanged<int>? onBranch;
 
   const _Bubble({
     required this.message,
@@ -713,6 +912,9 @@ class _Bubble extends StatelessWidget {
     required this.userName,
     required this.appearance,
     this.live = false,
+    this.messageIndex = -1,
+    this.onEdit,
+    this.onBranch,
   });
 
   @override
@@ -802,11 +1004,28 @@ class _Bubble extends StatelessWidget {
                   child: bubble,
                 ),
                 Padding(
-                  padding: const EdgeInsets.only(left: 4, right: 4, top: 4),
-                  child: Text(
-                    TimeOfDay.fromDateTime(message.timestamp).format(context),
-                    style: const TextStyle(color: kMuted, fontSize: 10),
-                  ),
+                  padding: const EdgeInsets.only(left: 4, right: 0, top: 1),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(
+                      TimeOfDay.fromDateTime(message.timestamp).format(context),
+                      style: const TextStyle(color: kMuted, fontSize: 10),
+                    ),
+                    if (!live && messageIndex >= 0) PopupMenuButton<String>(
+                      tooltip: 'Message actions',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                      iconSize: 15,
+                      icon: const Icon(Icons.more_horiz, color: kMuted),
+                      onSelected: (action) {
+                        if (action == 'edit') onEdit?.call(messageIndex);
+                        if (action == 'branch') onBranch?.call(messageIndex);
+                      },
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(value: 'edit', child: ListTile(dense: true, leading: Icon(Icons.edit_outlined), title: Text('Edit message'))),
+                        PopupMenuItem(value: 'branch', child: ListTile(dense: true, leading: Icon(Icons.alt_route), title: Text('Branch from here'))),
+                      ],
+                    ),
+                  ]),
                 ),
               ],
             ),
@@ -1170,6 +1389,18 @@ class _MemoryPanelState extends State<_MemoryPanel> {
     widget.onChanged();
   }
 
+  Future<void> _editFact(int i) async {
+    final controller = TextEditingController(text: widget.facts[i]);
+    final saved = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Edit memory'),
+      content: TextField(controller: controller, autofocus: true, maxLines: 3),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save'))],
+    ));
+    if (saved == true) { StorageService.instance.editMemoryFact(widget.charId, i, controller.text); widget.onChanged(); }
+    controller.dispose();
+  }
+
   Future<void> _editProfile() async {
     final fields = <String, TextEditingController>{
       'personality': TextEditingController(text: widget.profile.personality),
@@ -1329,10 +1560,14 @@ class _MemoryPanelState extends State<_MemoryPanel> {
                     child: Row(
                       children: [
                         Expanded(child: Text(widget.facts[i], style: const TextStyle(color: kTextSoft, fontSize: 12.5, height: 1.35))),
-                        GestureDetector(
-                          onTap: () => _delete(i),
-                          child: const Icon(Icons.close, size: 12, color: kMuted),
-                        ),
+                        IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 25, minHeight: 28),
+                          onPressed: () => StorageService.instance.togglePinnedMemory(widget.charId, widget.facts[i]),
+                          icon: Icon(StorageService.instance.loadPinnedMemory(widget.charId).contains(widget.facts[i]) ? Icons.push_pin : Icons.push_pin_outlined,
+                            size: 14, color: StorageService.instance.loadPinnedMemory(widget.charId).contains(widget.facts[i]) ? kAmber : kMuted)),
+                        IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 25, minHeight: 28),
+                          onPressed: () => _editFact(i), icon: const Icon(Icons.edit_outlined, size: 14, color: kMuted)),
+                        IconButton(padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 25, minHeight: 28),
+                          onPressed: () => _delete(i), icon: const Icon(Icons.close, size: 14, color: kMuted)),
                       ],
                     ),
                   ),
@@ -2103,4 +2338,51 @@ class _BalanceTile extends StatelessWidget {
       ],
     ),
   );
+}
+
+
+class _RelationshipSheet extends StatefulWidget {
+  final String charName;
+  final RelationshipState initial;
+  const _RelationshipSheet({required this.charName, required this.initial});
+  @override
+  State<_RelationshipSheet> createState() => _RelationshipSheetState();
+}
+
+class _RelationshipSheetState extends State<_RelationshipSheet> {
+  late int familiarity, trust, affection, rivalry;
+  late final TextEditingController notes, events;
+  @override
+  void initState() {
+    super.initState(); final r = widget.initial;
+    familiarity = r.familiarity; trust = r.trust; affection = r.affection; rivalry = r.rivalry;
+    notes = TextEditingController(text: r.notes); events = TextEditingController(text: r.sharedEvents.join('\n'));
+  }
+  @override
+  void dispose() { notes.dispose(); events.dispose(); super.dispose(); }
+  Widget _score(String label, int value, ValueChanged<double> update, Color color) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Row(children: [Expanded(child: Text(label, style: const TextStyle(color: kText))), Text('$value / 100', style: TextStyle(color: color, fontWeight: FontWeight.w700))]),
+    Slider(value: value.toDouble(), min: 0, max: 100, divisions: 20, activeColor: color, onChanged: update),
+  ]);
+  @override
+  Widget build(BuildContext context) => DraggableScrollableSheet(initialChildSize: .8, maxChildSize: .95, builder: (_, scroll) => Container(
+    decoration: const BoxDecoration(color: kSurface, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    child: ListView(controller: scroll, padding: const EdgeInsets.all(20), children: [
+      Text('${widget.charName} · Relationship', style: const TextStyle(color: kText, fontSize: 20, fontWeight: FontWeight.w800)),
+      const Text('Scores are explicit and editable; they do not change randomly.', style: TextStyle(color: kMuted, fontSize: 12)),
+      const SizedBox(height: 14),
+      _score('Familiarity', familiarity, (v) => setState(() => familiarity = v.round()), kCyan),
+      _score('Trust', trust, (v) => setState(() => trust = v.round()), kGreen),
+      _score('Affection', affection, (v) => setState(() => affection = v.round()), kPrimary2),
+      _score('Rivalry', rivalry, (v) => setState(() => rivalry = v.round()), kAmber),
+      const SizedBox(height: 8), const Text('Relationship notes', style: TextStyle(color: kText, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 6), TextField(controller: notes, maxLines: 3, decoration: const InputDecoration(hintText: 'Boundaries, current dynamic, unresolved tension…')),
+      const SizedBox(height: 14), const Text('Shared events (one per line)', style: TextStyle(color: kText, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 6), TextField(controller: events, maxLines: 4, decoration: const InputDecoration(hintText: 'The promise made at the tower…')),
+      const SizedBox(height: 16), FilledButton(onPressed: () => Navigator.pop(context, RelationshipState(
+        familiarity: familiarity, trust: trust, affection: affection, rivalry: rivalry, notes: notes.text.trim(),
+        sharedEvents: events.text.split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).take(30).toList(),
+      )), child: const Text('Save relationship')),
+    ]),
+  ));
 }

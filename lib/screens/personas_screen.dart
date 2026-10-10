@@ -228,7 +228,7 @@ class PersonaSheet extends StatefulWidget {
 }
 
 class _PersonaSheetState extends State<PersonaSheet> {
-  late final TextEditingController _name, _avatar, _appearance, _personality, _backstory, _traits;
+  late final TextEditingController _name, _avatar, _appearance, _personality, _backstory, _traits, _abilities, _relationships;
   late final TextEditingController _concept;
   bool _wizardExpanded = false;
   final Map<String, bool> _generating = {};
@@ -244,11 +244,13 @@ class _PersonaSheetState extends State<PersonaSheet> {
     _personality = TextEditingController(text: p?.personality ?? '');
     _backstory   = TextEditingController(text: p?.backstory ?? '');
     _traits      = TextEditingController(text: p?.traits.join(', ') ?? '');
+    _abilities   = TextEditingController(text: p?.abilities ?? '');
+    _relationships = TextEditingController(text: p?.relationships ?? '');
   }
 
   @override
   void dispose() {
-    for (final c in [_concept, _name, _avatar, _appearance, _personality, _backstory, _traits]) {
+    for (final c in [_concept, _name, _avatar, _appearance, _personality, _backstory, _traits, _abilities, _relationships]) {
       c.dispose();
     }
     super.dispose();
@@ -397,6 +399,8 @@ class _PersonaSheetState extends State<PersonaSheet> {
       personality: _personality.text.trim(),
       backstory: _backstory.text.trim(),
       traits: traitsList,
+      abilities: _abilities.text.trim(),
+      relationships: _relationships.text.trim(),
     );
   }
 
@@ -571,6 +575,10 @@ class _PersonaSheetState extends State<PersonaSheet> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 14),
+                TextField(controller: _abilities, maxLines: 3, decoration: const InputDecoration(labelText: 'Abilities', hintText: 'Skills, powers, equipment, limitations…'), style: const TextStyle(color: kText, fontSize: 13)),
+                const SizedBox(height: 14),
+                TextField(controller: _relationships, maxLines: 3, decoration: const InputDecoration(labelText: 'Relationships', hintText: 'Allies, rivals, family, important connections…'), style: const TextStyle(color: kText, fontSize: 13)),
               ],
             ),
           ),

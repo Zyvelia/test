@@ -19,8 +19,17 @@ class AppProvider extends ChangeNotifier {
   Character? get activeChar => _activeChar;
   ChatAppearance get appearance => _settings.appearance;
 
+  String get activePersonaId {
+    final charId = _activeChar?.id;
+    if (charId != null) {
+      final perCharacter = _store.loadActivePersonasByCharacter()[charId];
+      if (perCharacter != null) return perCharacter;
+    }
+    return _settings.activePersonaId;
+  }
+
   Persona? get activePersona {
-    final id = _settings.activePersonaId;
+    final id = activePersonaId;
     if (id.isEmpty) return null;
     try {
       return _personas.firstWhere((p) => p.id == id);
@@ -80,6 +89,8 @@ class AppProvider extends ChangeNotifier {
 
   void deletePersona(String id) {
     _store.deletePersona(id);
+    final mappings = _store.loadActivePersonasByCharacter();
+    for (final entry in mappings.entries.toList()) { if (entry.value == id) _store.saveActivePersonaForCharacter(entry.key, ''); }
     if (_settings.activePersonaId == id) {
       _settings = _settings.copyWith(activePersonaId: '');
       _store.saveSettings(_settings);
@@ -88,8 +99,13 @@ class AppProvider extends ChangeNotifier {
   }
 
   void setActivePersona(String id) {
-    _settings = _settings.copyWith(activePersonaId: id);
-    _store.saveSettings(_settings);
+    final charId = _activeChar?.id;
+    if (charId != null) {
+      _store.saveActivePersonaForCharacter(charId, id);
+    } else {
+      _settings = _settings.copyWith(activePersonaId: id);
+      _store.saveSettings(_settings);
+    }
     notifyListeners();
   }
 

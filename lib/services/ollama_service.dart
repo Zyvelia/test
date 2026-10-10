@@ -132,6 +132,8 @@ class OllamaService {
         if (persona.personality.isNotEmpty) persona.personality,
         if (persona.backstory.isNotEmpty) 'Backstory: ${persona.backstory}',
         if (persona.traits.isNotEmpty) 'Traits: ${persona.traits.join(', ')}',
+        if (persona.abilities.isNotEmpty) 'Abilities and limitations: ${persona.abilities}',
+        if (persona.relationships.isNotEmpty) 'Relationships: ${persona.relationships}',
       ];
       userPersona = parts.join('\n');
     } else {
@@ -437,6 +439,67 @@ $convo""";
     } catch (_) {
       return null;
     }
+  }
+
+  // ── relationship tracking ────────────────────────────────────────────────────
+
+  Future<RelationshipState?> updateRelationshipState({
+    required String baseUrl,
+    required String model,
+    required String charName,
+    required RelationshipState current,
+    required List<ChatMessage> recentMessages,
+  }) async {
+    final real = recentMessages.where((m) => (m.isUser || m.isAssistant) && m.content.trim().isNotEmpty).toList();
+    if (real.length < 4) return null;
+    final recent = real.length > 12 ? real.sublist(real.length - 12) : real;
+    final convo = recent.map((m) => '${m.isUser ? 'User' : charName}: ${m.content}').join('\n');
+    final prompt = """Update a fictional relationship tracker for $charName based only on evidence in the recent conversation.
+Return ONLY JSON with keys familiarity, trust, affection, rivalry (integers 0-100), notes (short string), shared_events (array of short strings).
+Current state: ${jsonEncode(current.toJson())}
+Recent conversation:
+$convo
+Rules:
+- Scores are continuity estimates, not random game rewards. Preserve a score when the conversation provides no clear evidence to change it.
+- Normally change a score by only 0-4 points per update. Larger changes require a major, explicit event in the dialogue.
+- Trust requires demonstrated reliability or betrayal; affection requires clear warmth or intimacy; rivalry requires meaningful competition or antagonism; familiarity increases through actual interaction.
+- Do not assume romance, consent, forgiveness, friendship, or hostility without evidence. Mixed feelings are allowed.
+- Notes must summarize the established dynamic and evidence, not invent inner thoughts for the user.
+- Preserve prior shared events and add only important events that actually occurred. Keep at most 20 concise events.
+- Do not let the character assign its own scores arbitrarily; base every change on the transcript.
+""";
+    try {
+      final r = await http.post(Uri.parse('${normalizeUrl(baseUrl)}/api/chat'),
+        headers: {'Content-Type': 'application/json'}, body: jsonEncode({
+          'model': model,
+          'messages': [
+            {'role': 'system', 'content': 'You are a careful continuity editor. Return valid JSON only.'},
+            {'role': 'user', 'content': prompt},
+          ],
+          'stream': false, 'keep_alive': '30m',
+          'options': {'num_ctx': 4096, 'temperature': 0.1, 'top_p': 0.8},
+        })).timeout(const Duration(seconds: 60));
+      if (r.statusCode != 200) return null;
+      final raw = (jsonDecode(r.body)['message']?['content'] as String? ?? '').trim();
+      final j = parseStructuredJson(raw);
+      if (j == null) return null;
+      int score(String key, int fallback) {
+        final proposed = (j[key] is num ? (j[key] as num).round() : fallback).clamp(0, 100).toInt();
+        // Enforce gradual changes in code as well as in the extraction prompt.
+        return proposed.clamp((fallback - 4).clamp(0, 100), (fallback + 4).clamp(0, 100)).toInt();
+      }
+      final events = j['shared_events'] is List
+          ? (j['shared_events'] as List).map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList()
+          : current.sharedEvents;
+      return RelationshipState(
+        familiarity: score('familiarity', current.familiarity),
+        trust: score('trust', current.trust),
+        affection: score('affection', current.affection),
+        rivalry: score('rivalry', current.rivalry),
+        notes: j['notes']?.toString().trim().isNotEmpty == true ? j['notes'].toString().trim() : current.notes,
+        sharedEvents: events.length > 20 ? events.sublist(events.length - 20) : events,
+      );
+    } catch (_) { return null; }
   }
 
   // ── memory extraction ────────────────────────────────────────────────────────

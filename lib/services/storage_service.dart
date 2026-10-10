@@ -31,9 +31,13 @@ class StorageService {
   File _charFile(String id) => File('${_base.path}/characters/$id.json');
   File _chatFile(String id) => File('${_base.path}/chats/$id.json');
   File _memFile(String id) => File('${_base.path}/memories/$id.json');
+  File _pinnedMemFile(String id) => File('${_base.path}/memories/${id}_pinned.json');
   File _storyStateFile(String id) => File('${_base.path}/memories/${id}_story_state.json');
   File _characterProfileFile(String id) => File('${_base.path}/memories/${id}_character_profile.json');
+  File _relationshipFile(String id) => File('${_base.path}/memories/${id}_relationship.json');
+  File _appearanceFile(String id) => File('${_base.path}/characters/${id}_appearance.json');
   File _personaFile(String id) => File('${_base.path}/personas/$id.json');
+  File get _activePersonaByCharacterFile => File('${_base.path}/personas/active_by_character.json');
   File _sessionFile(String id) => File('${_base.path}/sessions/$id.json');
   File get _settingsFile => File('${_base.path}/settings.json');
 
@@ -83,7 +87,7 @@ class StorageService {
       _writeJson(_charFile(c.id), c.toJson());
 
   void deleteCharacter(String id) {
-    for (final f in [_charFile(id), _chatFile(id), _memFile(id)]) {
+    for (final f in [_charFile(id), _chatFile(id), _memFile(id), _pinnedMemFile(id), _relationshipFile(id), _appearanceFile(id), _storyStateFile('${id}_active'), _characterProfileFile(id)]) {
       if (f.existsSync()) f.deleteSync();
     }
     // delete all sessions for this char
@@ -124,6 +128,15 @@ class StorageService {
 
   void deletePersona(String id) {
     if (_personaFile(id).existsSync()) _personaFile(id).deleteSync();
+  }
+
+  Map<String, String> loadActivePersonasByCharacter() => _readJson(_activePersonaByCharacterFile)
+      .map((key, value) => MapEntry(key, value.toString()));
+
+  void saveActivePersonaForCharacter(String charId, String personaId) {
+    final map = loadActivePersonasByCharacter();
+    map[charId] = personaId;
+    _writeJson(_activePersonaByCharacterFile, map);
   }
 
   // ── chat history (active / live chat) ────────────────────────────────────────
@@ -206,6 +219,25 @@ class StorageService {
     }
   }
 
+  List<String> loadPinnedMemory(String charId) =>
+      _readJsonList(_pinnedMemFile(charId)).map((e) => e.toString()).toList();
+
+  void togglePinnedMemory(String charId, String fact) {
+    final pinned = loadPinnedMemory(charId);
+    if (pinned.contains(fact)) { pinned.remove(fact); } else { pinned.add(fact); }
+    _writeJson(_pinnedMemFile(charId), pinned);
+  }
+
+  void editMemoryFact(String charId, int index, String value) {
+    final facts = loadMemory(charId);
+    if (index < 0 || index >= facts.length || value.trim().isEmpty) return;
+    final old = facts[index];
+    facts[index] = value.trim();
+    saveMemory(charId, facts);
+    final pinned = loadPinnedMemory(charId);
+    if (pinned.remove(old)) { pinned.add(value.trim()); _writeJson(_pinnedMemFile(charId), pinned); }
+  }
+
   void deleteMemoryFact(String charId, int index) {
     final facts = loadMemory(charId);
     if (index >= 0 && index < facts.length) {
@@ -235,6 +267,21 @@ class StorageService {
     if (file.existsSync()) file.deleteSync();
   }
 
+
+  RelationshipState loadRelationship(String charId) =>
+      RelationshipState.fromJson(_readJson(_relationshipFile(charId)));
+
+  void saveRelationship(String charId, RelationshipState state) =>
+      _writeJson(_relationshipFile(charId), state.toJson());
+
+  ChatAppearance? loadCharacterAppearance(String charId) {
+    final file = _appearanceFile(charId);
+    if (!file.existsSync()) return null;
+    return ChatAppearance.fromJson(_readJson(file));
+  }
+
+  void saveCharacterAppearance(String charId, ChatAppearance appearance) =>
+      _writeJson(_appearanceFile(charId), appearance.toJson());
 
   CharacterProfileMemory loadCharacterProfile(String charId) =>
       CharacterProfileMemory.fromJson(_readJson(_characterProfileFile(charId)));

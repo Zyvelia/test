@@ -115,6 +115,8 @@ class Persona {
   final String personality;
   final String backstory;
   final List<String> traits;
+  final String abilities;
+  final String relationships;
 
   Persona({
     required this.id,
@@ -124,6 +126,8 @@ class Persona {
     this.personality = '',
     this.backstory = '',
     this.traits = const [],
+    this.abilities = '',
+    this.relationships = '',
   });
 
   factory Persona.fromJson(Map<String, dynamic> j) => Persona(
@@ -134,6 +138,8 @@ class Persona {
         personality: j['personality'] ?? '',
         backstory: j['backstory'] ?? '',
         traits: List<String>.from(j['traits'] ?? []),
+        abilities: j['abilities']?.toString() ?? '',
+        relationships: j['relationships']?.toString() ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -144,6 +150,8 @@ class Persona {
         'personality': personality,
         'backstory': backstory,
         'traits': traits,
+        'abilities': abilities,
+        'relationships': relationships,
       };
 
   Persona copyWith({
@@ -154,6 +162,8 @@ class Persona {
     String? personality,
     String? backstory,
     List<String>? traits,
+    String? abilities,
+    String? relationships,
   }) =>
       Persona(
         id: id ?? this.id,
@@ -163,6 +173,8 @@ class Persona {
         personality: personality ?? this.personality,
         backstory: backstory ?? this.backstory,
         traits: traits ?? this.traits,
+        abilities: abilities ?? this.abilities,
+        relationships: relationships ?? this.relationships,
       );
 }
 
@@ -337,6 +349,36 @@ class StoryState {
         openThreads: openThreads ?? this.openThreads,
         updatedAt: updatedAt ?? DateTime.now(),
       );
+}
+
+// ── RelationshipState — explicit, inspectable relationship tracking ────────────
+
+class RelationshipState {
+  final int familiarity; // 0–100
+  final int trust;       // 0–100
+  final int affection;   // 0–100
+  final int rivalry;     // 0–100
+  final String notes;
+  final List<String> sharedEvents;
+  final DateTime updatedAt;
+
+  RelationshipState({this.familiarity = 0, this.trust = 0, this.affection = 0,
+    this.rivalry = 0, this.notes = '', this.sharedEvents = const [], DateTime? updatedAt})
+      : updatedAt = updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+
+  factory RelationshipState.fromJson(Map<String, dynamic> j) => RelationshipState(
+    familiarity: ((j['familiarity'] ?? 0) as num).toInt().clamp(0, 100).toInt(),
+    trust: ((j['trust'] ?? 0) as num).toInt().clamp(0, 100).toInt(),
+    affection: ((j['affection'] ?? 0) as num).toInt().clamp(0, 100).toInt(),
+    rivalry: ((j['rivalry'] ?? 0) as num).toInt().clamp(0, 100).toInt(),
+    notes: j['notes']?.toString() ?? '',
+    sharedEvents: (j['shared_events'] as List? ?? []).map((e) => e.toString()).toList(),
+    updatedAt: DateTime.tryParse(j['updated_at']?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0),
+  );
+
+  Map<String, dynamic> toJson() => {'familiarity': familiarity, 'trust': trust,
+    'affection': affection, 'rivalry': rivalry, 'notes': notes,
+    'shared_events': sharedEvents, 'updated_at': DateTime.now().toIso8601String()};
 }
 
 // ── Wallet ────────────────────────────────────────────────────────────────────
