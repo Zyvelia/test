@@ -18,6 +18,7 @@ LOG = logging.getLogger('aurora')
 
 
 async def reply(interaction, text):
+    text = str(text)[:1950]
     if interaction.response.is_done():
         await interaction.followup.send(text, ephemeral=True)
     else:
@@ -28,6 +29,9 @@ async def audit(bot, guild, text, **kwargs):
     config = bot.store.settings(guild.id)
     channel = guild.get_channel(config['logs']) if config else None
     if channel:
+        if channel.permissions_for(guild.default_role).view_channel:
+            LOG.warning('Staff log channel is visible to @everyone in guild %s; withholding private log', guild.id)
+            return False
         try:
             await channel.send(text, allowed_mentions=discord.AllowedMentions.none(), **kwargs)
         except discord.HTTPException:
@@ -46,6 +50,7 @@ class RoleView(discord.ui.View):
     async def toggle(self, i):
         if not i.guild or i.guild.id != self.guild_id:
             return await reply(i, 'This role button is unavailable here.')
+        if not await self.bot.community.need(i,'roles'): return
         role = i.guild.get_role(self.role_id)
         config = self.bot.store.settings(i.guild.id)
         if (not config or not role or role.id == config['staff']
@@ -76,6 +81,7 @@ class OpenTicketView(discord.ui.View):
     async def open_ticket(self, i, button):
         if not i.guild:
             return await reply(i, 'Tickets work inside the server.')
+        if not await self.bot.community.need(i,'tickets'): return
         config = self.bot.store.settings(i.guild.id)
         if not config:
             return await reply(i, 'An administrator must run /setup first.')
@@ -195,6 +201,9 @@ class AuroraBot(commands.Bot):
         self.store = store
         self.ticket_lock = asyncio.Lock()
         self.role_locks = {}
+        from .community import Community
+        self.community = Community(self)
+        self.tree.interaction_check = self.command_allowed
 
     async def setup_hook(self):
         self.add_view(OpenTicketView(self))
@@ -202,6 +211,9 @@ class AuroraBot(commands.Bot):
         for record in self.store.roles():
             self.add_view(RoleView(self, record['guild'], record['role']))
         register_commands(self)
+        from .community import register_extra
+        register_extra(self)
+        await self.community.start()
         dev = os.getenv('DEV_GUILD_ID', '').strip()
         if dev:
             guild = discord.Object(id=int(dev))
@@ -215,15 +227,23 @@ class AuroraBot(commands.Bot):
         LOG.info('Connected as %s. Keep this window open.', self.user)
 
     async def on_member_join(self, member):
-        config = self.store.settings(member.guild.id)
-        channel = member.guild.get_channel(config['welcome']) if config else None
-        if channel:
-            try:
-                await channel.send(f'Welcome {member.mention} to **{discord.utils.escape_markdown(member.guild.name)}**! '
-                                   'Please read the server rules and choose your roles.',
-                                   allowed_mentions=discord.AllowedMentions(users=[member], roles=False, everyone=False))
-            except discord.HTTPException:
-                LOG.warning('Welcome message failed in guild %s', member.guild.id)
+        await self.community.on_join(member)
+
+    async def command_allowed(self, i):
+        from .features import enabled
+        if not i.guild or i.command is None: return True
+        mapping = {'role_button':'roles', 'ticket_panel':'tickets',
+                   'warn':'moderation','warnings':'moderation','timeout':'moderation',
+                   'untimeout':'moderation','kick':'moderation','ban':'moderation','purge':'moderation'}
+        feature = mapping.get(i.command.name)
+        if feature and not enabled(self.store,i.guild_id,feature):
+            await reply(i,f'{feature} is disabled here. An admin can use /admin feature.')
+            return False
+        return True
+
+    async def close(self):
+        await self.community.close()
+        await super().close()
 
 
 def register_commands(bot):
@@ -238,7 +258,8 @@ def register_commands(bot):
         await reply(i, '**Aurora**\nMembers: /ping, role buttons, ticket buttons.\n'
                     'Admins: /setup, /role_button, /ticket_panel.\n'
                     'Moderators: /warn, /warnings, /timeout, /untimeout, /kick, /ban, /purge.\n'
-                    'Tickets and role buttons survive bot restarts. The host PC must stay awake.')
+                    'Search everything with /tools commands. Admins configure /admin features and /admin setting. '
+                    'AI is optional and off by default. The host PC must stay awake.')
 
     @tree.command(name='setup', description='Configure welcome, support, and private staff logging channels.')
     @app_commands.guild_only()
@@ -303,8 +324,9 @@ def register_commands(bot):
     async def warn(i: discord.Interaction, member: discord.Member, reason: app_commands.Range[str, 1, 500]):
         if not await guard(i, member): return
         ident = bot.store.warn(i.guild.id, member.id, i.user.id, reason)
-        await reply(i, f'Warning #{ident} recorded for {member}.')
-        await audit(bot, i.guild, f'Warning #{ident}: {member} ({member.id}), moderator {i.user.id}: {reason}')
+        await i.response.defer(ephemeral=True)
+        case = await bot.community.case(i.guild, member.id, i.user.id, 'warning', reason, member)
+        await reply(i, f'Warning #{ident} recorded for {member}. Case #{case}.')
 
     @tree.command(name='warnings', description='Show the most recent ten warnings for a member.')
     @app_commands.guild_only()
@@ -324,9 +346,9 @@ def register_commands(bot):
                       minutes: app_commands.Range[int, 1, 40320], reason: app_commands.Range[str, 1, 500]):
         if not await guard(i, member): return
         await i.response.defer(ephemeral=True)
-        await member.timeout(datetime.timedelta(minutes=minutes), reason=f'{i.user.id}: {reason}')
+        await member.timeout(datetime.timedelta(minutes=minutes), reason=f'{i.user.id}: {reason}'[:512])
         await reply(i, f'Timed out {member} for {minutes} minutes.')
-        await audit(bot, i.guild, f'Timeout: {member.id}, {minutes} minutes, moderator {i.user.id}: {reason}')
+        await bot.community.case(i.guild, member.id, i.user.id, 'timeout', f'{minutes} minutes: {reason}', member)
 
     @tree.command(name='untimeout', description='Remove an active member timeout.')
     @app_commands.guild_only()
@@ -338,7 +360,7 @@ def register_commands(bot):
         await i.response.defer(ephemeral=True)
         await member.timeout(None, reason=f'Aurora timeout removed by {i.user.id}')
         await reply(i, f'Removed timeout for {member}.')
-        await audit(bot, i.guild, f'Timeout removed for {member.id} by {i.user.id}.')
+        await bot.community.case(i.guild, member.id, i.user.id, 'timeout removed', 'Removed by moderator', member)
 
     @tree.command(name='kick', description='Remove a member from this server.')
     @app_commands.guild_only()
@@ -348,9 +370,9 @@ def register_commands(bot):
     async def kick(i: discord.Interaction, member: discord.Member, reason: app_commands.Range[str, 1, 500]):
         if not await guard(i, member): return
         await i.response.defer(ephemeral=True)
-        await member.kick(reason=f'{i.user.id}: {reason}')
+        await member.kick(reason=f'{i.user.id}: {reason}'[:512])
         await reply(i, f'Kicked {member}.')
-        await audit(bot, i.guild, f'Kick: {member.id} by {i.user.id}: {reason}')
+        await bot.community.case(i.guild, member.id, i.user.id, 'kick', reason, member)
 
     @tree.command(name='ban', description='Ban a current member without deleting their message history.')
     @app_commands.guild_only()
@@ -360,9 +382,9 @@ def register_commands(bot):
     async def ban(i: discord.Interaction, member: discord.Member, reason: app_commands.Range[str, 1, 500]):
         if not await guard(i, member): return
         await i.response.defer(ephemeral=True)
-        await member.ban(reason=f'{i.user.id}: {reason}', delete_message_seconds=0)
+        await member.ban(reason=f'{i.user.id}: {reason}'[:512], delete_message_seconds=0)
         await reply(i, f'Banned {member}.')
-        await audit(bot, i.guild, f'Ban: {member.id} by {i.user.id}: {reason}')
+        await bot.community.case(i.guild, member.id, i.user.id, 'ban', reason, member)
 
     @tree.command(name='purge', description='Delete up to 100 recent messages in this channel.')
     @app_commands.guild_only()
@@ -375,7 +397,7 @@ def register_commands(bot):
         await i.response.defer(ephemeral=True)
         deleted = await i.channel.purge(limit=count, check=lambda m: (discord.utils.utcnow()-m.created_at).days<14)
         await reply(i, f'Deleted {len(deleted)} messages. Messages older than 14 days are left alone.')
-        await audit(bot, i.guild, f'Purge: {len(deleted)} messages in {i.channel.mention} by {i.user.id}.')
+        await bot.community.case(i.guild, 0, i.user.id, 'purge', f'{len(deleted)} messages in {i.channel_id}')
 
     @tree.error
     async def errors(i, error):
@@ -383,9 +405,13 @@ def register_commands(bot):
             return await reply(i, 'You do not have permission to use this command.')
         if isinstance(error, app_commands.BotMissingPermissions):
             return await reply(i, 'I am missing permissions: ' + ', '.join(error.missing_permissions))
+        if isinstance(error, app_commands.CommandOnCooldown):
+            return await reply(i, f'Try again in {error.retry_after:.0f} seconds.')
         original = getattr(error, 'original', error)
         if isinstance(original, discord.Forbidden):
             return await reply(i, 'Discord denied that action. Check my channel permissions and role position.')
+        if isinstance(original, ValueError):
+            return await reply(i, str(original)[:1800])
         LOG.error('Command failed', exc_info=(type(original), original, original.__traceback__))
         await reply(i, 'That action failed. Check the bot terminal for details, then retry.')
 
@@ -395,18 +421,18 @@ def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
     token = os.getenv('DISCORD_TOKEN', '').strip()
     if not token or token == 'paste_your_token_here':
-        raise SystemExit('Add DISCORD_TOKEN to .env first. Never share the token in chat or commit it.')
+        LOG.error('Add DISCORD_TOKEN to .env first. Never share the token in chat or commit it.'); raise SystemExit(2)
     dev = os.getenv('DEV_GUILD_ID', '').strip()
     if dev and (not dev.isdigit() or int(dev) <= 0):
-        raise SystemExit('DEV_GUILD_ID must be blank or a positive Discord server ID.')
+        LOG.error('DEV_GUILD_ID must be blank or a positive Discord server ID.'); raise SystemExit(2)
     store = Store(ROOT / 'data' / 'aurora.sqlite3')
     bot = AuroraBot(store)
     try:
         bot.run(token, log_handler=None)
     except discord.PrivilegedIntentsRequired:
-        raise SystemExit('Enable Server Members Intent and Message Content Intent in the Discord Developer Portal, then restart.')
+        LOG.error('Enable Server Members Intent and Message Content Intent in the Discord Developer Portal, then restart.'); raise SystemExit(2)
     except discord.LoginFailure:
-        raise SystemExit('Discord rejected DISCORD_TOKEN. Reset it in the Developer Portal and update .env.')
+        LOG.error('Discord rejected DISCORD_TOKEN. Reset it in the Developer Portal and update .env.'); raise SystemExit(2)
     finally:
         store.close()
 

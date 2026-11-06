@@ -94,6 +94,7 @@ class InteractionTests(unittest.IsolatedAsyncioTestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.tmp.name) / 'db.sqlite3')
         self.bot = AuroraBot(self.store)
+        await self.bot.__aenter__()
         self.store.configure(1, 2, 3, 4, 5)
         self.channel = NS(id=55, mention='<#55>', send=AsyncMock(), delete=AsyncMock())
         category = MagicMock(spec=discord.CategoryChannel)
@@ -219,7 +220,8 @@ class InteractionTests(unittest.IsolatedAsyncioTestCase):
             await self.bot.setup_hook()
         self.assertEqual(len(self.bot.persistent_views),3)
         self.assertEqual(self.bot.tree.sync.call_args.kwargs['guild'].id,123)
-        self.assertEqual(len(self.bot.tree.get_commands()),12)
+        self.assertIn('admin', {c.name for c in self.bot.tree.get_commands()})
+        self.assertIn('ai', {c.name for c in self.bot.tree.get_commands()})
 
     async def test_moderation_commands_enforce_runtime_permissions(self):
         register_commands(self.bot)

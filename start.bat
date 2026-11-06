@@ -6,6 +6,6 @@ if not exist ".venv\Scripts\python.exe" (
   pause
   exit /b 1
 )
-".venv\Scripts\python.exe" -m aurora.bot
+".venv\Scripts\python.exe" -m aurora.supervisor
 if errorlevel 1 echo Bot stopped with an error. Read the message above.
 pause

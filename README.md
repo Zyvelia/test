@@ -6,17 +6,32 @@ This replaces the Minecraft project; previous versions remain in Git history.
 
 ## What it does
 
-- Welcomes new members in your chosen channel.
-- Lets members add/remove safe roles using persistent buttons.
-- Records warnings and offers timeout, untimeout, kick, ban, and message cleanup.
-- Creates one private support ticket per member. The member, support role, bot,
-  and server administrators can see it.
-- Confirms ticket closure, saves a text transcript, and deletes the ticket channel.
-- Remembers server settings, warnings, roles, and tickets after restarting.
+- Custom welcome cards, goodbye messages, safe newcomer roles, and rules acceptance.
+- FAQ search, role dropdowns for games/platforms/notifications, and permission previews.
+- Spam/word/link filtering, numbered moderation cases, temporary bans, lockdowns,
+  slowmode, private reports, appeals, and opt-in moderation explanations.
+- Support tickets, polls (including anonymous voting), eligible-entry giveaways,
+  public reroll history, and a suggestion voting board.
+- Opt-in birthdays/spotlights, daily questions, trivia, word games and tic-tac-toe.
+- XP with anti-spam limits, private-profile/leaderboard opt-out, achievements,
+  virtual currency and cosmetic profile titles/colors.
+- Timezones, unit conversions, optional translation, and data deletion requests.
+- Per-server switches, configuration backups/restores, and a local Discord-login dashboard.
+- Optional AI with channel restrictions, daily quotas, and opt-in expiring memory.
+- Crash recovery with backoff and private local error logs.
 
-There is no AI API, paid subscription, or port forwarding required. Keep your PC
-awake, online, and the bot terminal open. Closing it, shutting down, or sleeping
-stops the bot. Run only **one copy** for a given bot token/database.
+**AI is off by default.** All new optional features start off; enable only the ones
+you want with `/admin feature`. Existing welcome, roles, tickets and moderation
+remain enabled. `/admin features` lists all switches; `/tools commands search:...`
+searches the command menu. Settings and saved data are isolated by server.
+
+Read the [complete feature guide](docs/FEATURES.md) for each command and setting,
+or the [optional dashboard setup](docs/DASHBOARD.md) for browser controls.
+
+No paid subscription or port forwarding is needed for the core bot. Optional hosted
+translation/AI providers may charge; local models need a separate model server.
+Keep your PC awake, online, and the terminal open. Run only **one copy** for a given
+bot token/database. The launcher restarts crashes but cannot run while your PC sleeps.
 
 ## 1. Download and prepare (Windows)
 
@@ -65,7 +80,7 @@ show duplicate or stale commands; keep one mode for normal use.
 
 ## 3. Start and configure
 
-1. Double-click **start.bat**. Wait for `Connected as ...` in the terminal.
+1. Double-click **start.bat**. The crash supervisor starts the bot; wait for `Connected as ...` in the terminal.
 2. In your server, create a **Support Staff** role, a **Support Tickets** category,
    a welcome text channel, and a private staff-log text channel.
 3. In the log channel permissions, deny **View Channel** for `@everyone`; allow
@@ -106,7 +121,9 @@ Do not use a self-service role to grant access to sensitive private channels.
 Moderation also checks the human moderator's and bot's role hierarchy. The server
 owner, bot itself, moderator themselves, and equal/higher roles are protected.
 Discord still enforces its own permissions, including timeout restrictions.
-Warnings are stored and logged; they are not automatically sent to the member.
+Warnings are stored and logged. To send best-effort private explanations, set
+`/admin setting name:dm_explanations value:true`. Every moderation action also
+gets a searchable staff case number.
 
 Only a ticket's creator, configured support staff, or someone with Manage Channels
 can close it. Closing requires a second confirmation. It saves the **most recent
@@ -123,6 +140,9 @@ are not archived. This is a basic support transcript, not a complete server back
 - `.venv/`: isolated installed dependencies; excluded from Git.
 - `data/aurora.sqlite3`: settings, warnings, role registrations, and open tickets.
 - `data/transcripts/`: saved text transcripts; excluded from Git.
+- `data/logs/`: bounded local crash/error logs; excluded from Git.
+- The database also stores optional profiles, votes, timers, appeals and AI memory
+  for features you explicitly enable. See the feature guide for deletion and retention.
 
 Stop the bot before backing up `data/`. Keep the backup and .env private. Delete
 old transcripts manually according to your server's retention needs. This bot
@@ -150,8 +170,8 @@ python -m unittest discover -s tests -v
 python -m aurora.bot
 ```
 
-Automated tests exercise database persistence, ticket concurrency/privacy, cleanup
-on failures, permission policy, and persistent component registration without
-connecting to Discord. GitHub Actions runs the suite on Linux and Windows.
-Actual Discord login, live channel permissions, welcome events, and the Windows
-batch launchers still need testing on your server/PC. No bot token is included.
+Automated tests exercise database migrations and persistence, ticket privacy,
+moderation policy, timer recovery, voting, economy, opt-in AI controls and local
+dashboard HTTP/OAuth permission paths without connecting to Discord or AI providers. GitHub Actions runs the suite on Linux and Windows.
+Actual Discord bot/OAuth login, live channel permissions, external providers,
+and Windows batch launchers still need testing on your server/PC. No bot token is included.

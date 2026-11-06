@@ -1,0 +1,136 @@
+"""Feature policy, backups, local games, and pure formatting helpers."""
+import datetime as dt
+import hashlib
+import ipaddress
+import re
+from urllib.parse import urlsplit
+
+FEATURES = {
+    'welcome': True, 'welcome_cards': False, 'goodbye': False, 'autorole': False,
+    'rules': False, 'faq': False, 'automod': False, 'moderation': True,
+    'appeals': False, 'reports': False, 'roles': True, 'tickets': True,
+    'polls': False, 'giveaways': False, 'suggestions': False, 'birthdays': False,
+    'spotlight': False, 'games': False, 'daily_questions': False, 'xp': False,
+    'economy': False, 'translation': False, 'ai': False,
+}
+OPTION_TYPES = {
+    'welcome_text': str, 'welcome_color': str, 'goodbye_channel': int, 'goodbye_text': str,
+    'autorole': int, 'rules_role': int, 'rules_text': str, 'blocked_words': list,
+    'blocked_domains': list, 'spam_limit': int, 'dm_explanations': bool,
+    'birthday_channel': int, 'daily_channel': int, 'daily_hour': int, 'timezone': str,
+    'ai_channels': list, 'ai_limit': int, 'faq': dict,
+}
+TRIVIA = [
+    ('Which planet is the largest?', ['Jupiter','Earth','Mars','Venus'],0),
+    ('What is the chemical symbol for gold?', ['Ag','Au','Fe','O'],1),
+    ('How many sides does a hexagon have?', ['5','8','6','7'],2),
+    ('Which ocean is the largest?', ['Atlantic','Indian','Arctic','Pacific'],3),
+    ('Which language runs natively in web browsers?', ['JavaScript','Python','Rust','C'],0),
+    ('What does CPU stand for?', ['Central Processing Unit','Computer Power Utility','Core Program User','Control Panel Unit'],0),
+    ('What is 12 squared?', ['124','144','24','164'],1),
+    ('Which animal is a mammal?', ['Shark','Trout','Dolphin','Octopus'],2),
+    ('What is the smallest prime number?', ['0','1','2','3'],2),
+    ('Which gas do plants absorb for photosynthesis?', ['Oxygen','Helium','Nitrogen','Carbon dioxide'],3),
+    ('Which instrument has keys, pedals, and strings?', ['Piano','Flute','Drum','Trumpet'],0),
+    ('What is the freezing point of water in Celsius?', ['100','32','0','-10'],2),
+]
+QUESTIONS = [
+    'What game could you play forever?', 'What skill would you like to learn?',
+    'What is your favorite soundtrack?', 'What made you smile this week?',
+    'What fictional world would you visit?', 'What is your favorite comfort food?',
+    'What is a hobby you would recommend?', 'Which movie deserves a sequel?',
+    'What is your ideal weekend?', 'What is a small achievement you are proud of?',
+    'What game should our community try next?', 'What is a useful tip you learned recently?',
+    'What would you build with unlimited time?', 'What is your favorite season?',
+    'What is your favorite cooperative game?', 'What book or show would you recommend?',
+    'What is your dream travel destination?', 'What would your superpower be?',
+    'What is your favorite thing about this community?', 'What are you looking forward to?',
+]
+WORDS = ['planet','silver','garden','rocket','puzzle','forest','castle','window','dragon','orange']
+SHOP = {'starlight': (100,'✨ Starlight',0xFFD166), 'ocean': (150,'🌊 Ocean',0x57C7FF),
+        'royal': (200,'👑 Royal',0xB980FF), 'neon': (250,'⚡ Neon',0x50FA7B)}
+
+def enabled(store, guild, name):
+    return store.option(guild, 'feature:'+name, FEATURES.get(name,False))
+
+def validate_option(key, value):
+    if key.startswith('feature:'):
+        if key[8:] not in FEATURES or type(value) is not bool: raise ValueError('Unknown feature or invalid switch.')
+        return
+    if key not in OPTION_TYPES or type(value) is not OPTION_TYPES[key]: raise ValueError('Unknown setting or invalid type.')
+    if isinstance(value,str) and len(value)>1800: raise ValueError('Setting is too long.')
+    if key=='faq':
+        if len(value)>50 or any(not isinstance(q,str) or not isinstance(a,str) or not 1<=len(q)<=150 or not 1<=len(a)<=1200 for q,a in value.items()): raise ValueError('Invalid FAQ backup.')
+    if isinstance(value,list):
+        if len(value)>100: raise ValueError('Too many list items.')
+        for item in value:
+            if key=='ai_channels':
+                if type(item) is not int or item<=0: raise ValueError('Invalid channel ID.')
+            elif not isinstance(item,str) or not item or len(item)>100: raise ValueError('Invalid filter entry.')
+    if key in {'spam_limit','ai_limit'} and not 1<=value<=100: raise ValueError('Limit must be 1–100.')
+    if key=='daily_hour' and not 0<=value<=23: raise ValueError('Hour must be 0–23.')
+    if key in {'autorole','rules_role','goodbye_channel','birthday_channel','daily_channel'} and value<0: raise ValueError('Invalid ID.')
+    if key=='welcome_color' and not re.fullmatch(r'#[0-9a-fA-F]{6}',value): raise ValueError('Use a hex color such as #87CEEB.')
+    if key=='timezone':
+        from zoneinfo import ZoneInfo
+        ZoneInfo(value)
+
+def validate_backup(guild, backup):
+    if not isinstance(backup,dict) or set(backup)!={'version','guild','settings','options','roles'}: raise ValueError('Invalid backup fields.')
+    if backup['version']!=1 or backup['guild']!=guild: raise ValueError('Backup is for a different server or version.')
+    if not isinstance(backup['options'],dict) or len(backup['options'])>100: raise ValueError('Invalid options.')
+    for key,value in backup['options'].items(): validate_option(key,value)
+    roles=backup['roles']
+    if not isinstance(roles,list) or len(roles)>100 or any(type(x) is not int or x<=0 for x in roles): raise ValueError('Invalid roles.')
+    s=backup['settings']
+    if s is not None:
+        if not isinstance(s,dict) or set(s)!={'guild','welcome','category','staff','logs'} or s['guild']!=guild: raise ValueError('Invalid setup.')
+        if any(type(x) is not int or x<=0 for x in s.values()): raise ValueError('Invalid setup IDs.')
+
+def suspicious_link(text, blocked):
+    # Local heuristics, not a malware reputation service; no URLs are opened.
+    links=re.findall(r'https?://[^\s<>]+',text,re.I)
+    for link in links:
+        try:
+            u=urlsplit(link); host=(u.hostname or '').lower().rstrip('.')
+            if not host or u.username or u.password: return True
+            if any(host==d or host.endswith('.'+d) for d in blocked): return True
+            if any(label.startswith('xn--') for label in host.split('.')): return True
+            try:
+                ipaddress.ip_address(host)
+                return True
+            except ValueError: pass
+        except ValueError: return True
+    return False
+
+def blocked_word(text, words):
+    return any(re.search(r'(?<!\w)'+re.escape(w)+r'(?!\w)',text,re.I) for w in words)
+
+def award_activity(profile, content, now):
+    digest=hashlib.sha256(content.strip().casefold().encode()).hexdigest()
+    if len(content.strip())<5 or now-profile['last_xp']<60 or digest==profile['last_hash']: return False
+    profile['last_xp']=now; profile['last_hash']=digest; profile['xp']+=10; profile['coins']+=2
+    unlock(profile,'First words')
+    if profile['xp']>=500: unlock(profile,'Level five')
+    return True
+
+def unlock(profile, name):
+    if name not in profile['achievements']: profile['achievements'].append(name)
+
+def win_board(board):
+    for a,b,c in [(0,1,2),(3,4,5),(6,7,8),(0,3,6),(1,4,7),(2,5,8),(0,4,8),(2,4,6)]:
+        if board[a] and board[a]==board[b]==board[c]: return board[a]
+    return 'draw' if all(board) else None
+
+def convert(value, source, target):
+    units={'m':('length',1),'km':('length',1000),'cm':('length',.01),'ft':('length',.3048),
+           'in':('length',.0254),'mi':('length',1609.344),'kg':('mass',1),'g':('mass',.001),
+           'lb':('mass',.45359237),'oz':('mass',.028349523125),'l':('volume',1),
+           'ml':('volume',.001),'gal_us':('volume',3.785411784)}
+    source,target=source.lower(),target.lower()
+    if source in {'c','f','k'} and target in {'c','f','k'}:
+        c=(value-32)*5/9 if source=='f' else value-273.15 if source=='k' else value
+        if c< -273.15: raise ValueError('Temperature is below absolute zero.')
+        return c*9/5+32 if target=='f' else c+273.15 if target=='k' else c
+    if source not in units or target not in units or units[source][0]!=units[target][0]: raise ValueError('Use compatible supported units; see /tools units.')
+    return value*units[source][1]/units[target][1]
