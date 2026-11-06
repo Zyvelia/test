@@ -9,6 +9,8 @@ from .bot import reply
 from .features import enabled
 from .game_engines import ConnectFour, Checkers, Chess, Hangman, Sudoku, Memory, Battleship, WORD_BANK
 
+from .more_games import Reversi,SAVED_TYPES
+
 class MoveModal(discord.ui.Modal,title='Your move'):
     value=discord.ui.TextInput(label='Move or guess',max_length=80)
     def __init__(self,hub,key): super().__init__(); self.hub=hub; self.key=key; self.game=hub.sessions.get(key)
@@ -18,12 +20,12 @@ class MoveModal(discord.ui.Modal,title='Your move'):
 
 class GameView(discord.ui.View):
     def __init__(self,hub,key,invite=False):
-        super().__init__(timeout=None); self.hub=hub; self.key=key
+        super().__init__(timeout=None); self.hub=hub; self.key=key; self.game=hub.sessions.get(key)
         for label in (['Accept','Decline'] if invite else ['Enter move','Private board','Resign']):
             button=discord.ui.Button(label=label)
             async def callback(i,action=label):
                 game=hub.sessions.get(key)
-                if not game or i.user.id not in game['players']: return await reply(i,'This is not your active game.')
+                if not game or game is not self.game or i.user.id not in game['players']: return await reply(i,'This is not your active game.')
                 if not enabled(hub.store,i.guild_id,'games'): return await reply(i,'Games are disabled here.')
                 if action in {'Accept','Decline'}:
                     if i.user.id!=game['players'][1]: return await reply(i,'Only the challenged member can respond.')
@@ -44,18 +46,18 @@ class GameView(discord.ui.View):
                 button=discord.ui.Button(label=label,row=1+n//4,disabled=game['kind']=='memory' and (n in engine.matched or n in engine.shown))
                 async def choose(i,value=move):
                     found=hub.find(i.guild_id,i.user.id)
-                    if not found or found[0]!=key: return await reply(i,'This is not your active game.')
+                    if not found or found[0]!=key or found[1] is not self.game: return await reply(i,'This is not your active game.')
                     await hub.move(i,value)
                 button.callback=choose; self.add_item(button)
 
 class TournamentView(discord.ui.View):
     def __init__(self,hub,key):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None); self.game=hub.sessions.get(key)
         for label in ['Join','Start','Guess']:
             button=discord.ui.Button(label=label)
             async def callback(i,action=label):
                 game=hub.sessions.get(key)
-                if not game or i.guild_id!=key[0] or not enabled(hub.store,i.guild_id,'games'): return await reply(i,'Tournament unavailable.')
+                if not game or game is not self.game or i.guild_id!=key[0] or not enabled(hub.store,i.guild_id,'games'): return await reply(i,'Tournament unavailable.')
                 if action=='Join':
                     if game['round']: return await reply(i,'The tournament has started.')
                     if i.user.id not in game['players']:
@@ -95,15 +97,25 @@ class GameHub:
         game=dict(kind=kind,players=[i.user.id]+([opponent.id] if opponent else []),accepted=not opponent,expires=time.time()+(120 if opponent else 1800))
         if kind=='anagram': game.update(round=0,rounds=rounds,scores={i.user.id:0},words=random.sample(WORD_BANK,rounds),last='')
         else:
-            factories={'connect_four':ConnectFour,'checkers':Checkers,'chess':Chess,'hangman':Hangman,'sudoku':lambda:Sudoku(difficulty),'memory':Memory,'battleship':Battleship}
-            game['engine']=await asyncio.to_thread(factories[kind])
+            factories={'connect_four':ConnectFour,'checkers':Checkers,'chess':Chess,'hangman':Hangman,'sudoku':lambda:Sudoku(difficulty),'memory':Memory,'battleship':Battleship,'reversi':Reversi,**SAVED_TYPES}
+            if kind=='minesweeper':factories[kind]=lambda:SAVED_TYPES[kind](difficulty)
+            saved=self.store.record(f'puzzle:{i.guild_id}:{i.user.id}:{kind}') if kind in SAVED_TYPES else None
+            game['engine']=SAVED_TYPES[kind].load(saved['data']['state']) if saved else await asyncio.to_thread(factories[kind])
         game['key']=key
         # Recheck after off-thread Sudoku generation.
         if self.find(i.guild_id,i.user.id) or opponent and self.find(i.guild_id,opponent.id): return await reply(i,'A player started another game. Retry after it ends.')
+        if sum(k[0]==i.guild_id for k in self.sessions)>=50:return await reply(i,'Server game limit reached. Try later.')
         self.sessions[key]=game
+        self.save_puzzle(game)
         view=TournamentView(self,key) if kind=='anagram' else GameView(self,key,bool(opponent))
         try: game['message']=await i.followup.send(f'<@{opponent.id}>, accept this {kind} challenge within two minutes.' if opponent else self.public(game),view=view,wait=True,allowed_mentions=discord.AllowedMentions.none())
         except Exception: self.sessions.pop(key,None); raise
+    def save_puzzle(self,g):
+        if g['kind'] not in SAVED_TYPES:return
+        ident=f'puzzle:{g["key"][0]}:{g["players"][0]}:{g["kind"]}'
+        if g['engine'].done:self.store.delete_record(ident)
+        else:self.store.put_record(g['key'][0],'puzzle_progress',dict(user=g['players'][0],kind=g['kind'],state=g['engine'].dump(),saved=time.time()),ident)
+
     def next_round(self,g):
         g['round']+=1; g['word']=g['words'][g['round']-1]; chars=list(g['word'])
         for _ in range(10):
@@ -124,14 +136,17 @@ class GameHub:
             g['answered'].add(i.user.id); g['scores'][i.user.id]+=max(1,int(g['deadline']-time.time()))
             return await reply(i,'Correct! Your points will appear at the end of the round.')
         engine=g['engine']
+        if engine.done:return await reply(i,'This game has finished. Start another game.')
         if g['players'][engine.turn]!=i.user.id: return await reply(i,'It is the other player’s turn.')
         try: engine.move(text.strip())
         except ValueError as error: return await reply(i,str(error))
         g['expires']=time.time()+1800
+        self.save_puzzle(g)
         await i.response.defer(ephemeral=True)
         await self.update(g)
         await reply(i,self.private(g,i.user.id) if g['kind']=='battleship' else 'Move recorded.')
-        if engine.done: self.sessions.pop(key,None)
+        if engine.done:
+            if self.sessions.get(key) is g:self.sessions.pop(key,None)
         elif isinstance(engine,Memory) and len(engine.shown)==2: g['hide_at']=time.time()+2
     async def resign(self,i):
         found=self.find(i.guild_id,i.user.id)
@@ -141,12 +156,14 @@ class GameHub:
         with contextlib.suppress(discord.HTTPException): await g['message'].edit(content=f'Game ended: <@{i.user.id}> resigned.',view=None,allowed_mentions=discord.AllowedMentions.none())
         await reply(i,'Game ended.')
     async def update(self,g):
+        if self.sessions.get(g['key']) is not g:return
         with contextlib.suppress(discord.HTTPException):
             done=g.get('engine') and g['engine'].done
             await g['message'].edit(content=self.public(g),view=None if done else (TournamentView(self,g['key']) if g['kind']=='anagram' else GameView(self,g['key'])),allowed_mentions=discord.AllowedMentions.none())
     async def tick(self):
         now=time.time()
         for key,g in list(self.sessions.items()):
+            if self.sessions.get(key) is not g:continue
             if g['expires']<now or not enabled(self.store,key[0],'games'):
                 self.sessions.pop(key,None)
                 with contextlib.suppress(discord.HTTPException): await g['message'].edit(content='Game ended (timeout or games disabled).',view=None)
@@ -199,3 +216,25 @@ def register_games(bot):
         await reply(i,hub.private(found[1],i.user.id) if found else 'No active game.')
     @group.command(name='resign',description='End your active game or tournament.')
     async def resign(i:discord.Interaction): await hub.resign(i)
+
+    @group.command(name='reversi',description='Challenge a member to Reversi with legal flips and automatic passes.')
+    async def reversi(i:discord.Interaction,opponent:discord.Member):await hub.start(i,'reversi',opponent)
+    @group.command(name='minesweeper',description='Reveal safe squares in a saved 6×6 Minesweeper puzzle.')
+    @app_commands.choices(difficulty=[app_commands.Choice(name=x,value=x) for x in ['easy','medium','hard']])
+    async def minesweeper(i:discord.Interaction,difficulty:str='easy'):await hub.start(i,'minesweeper',difficulty=difficulty)
+    @group.command(name='word_search',description='Find hidden words in a saved 10×10 letter grid.')
+    async def word_search(i:discord.Interaction):await hub.start(i,'word_search')
+    @group.command(name='crossword',description='Solve a mini crossword with saved answers and crossing letters.')
+    async def crossword(i:discord.Interaction):await hub.start(i,'crossword')
+    @group.command(name='spelling',description='Spell words from clues across increasingly difficult levels.')
+    async def spelling(i:discord.Interaction):await hub.start(i,'spelling')
+    @group.command(name='resume',description='Resume one of your saved puzzles after a restart.')
+    @app_commands.choices(kind=[app_commands.Choice(name=x,value=x) for x in SAVED_TYPES])
+    async def resume(i:discord.Interaction,kind:str):
+        if not hub.store.record(f'puzzle:{i.guild_id}:{i.user.id}:{kind}'):return await reply(i,'No saved puzzle of this type.')
+        await hub.start(i,kind)
+    @group.command(name='puzzle_reset',description='Discard your saved puzzle so the next start generates a new one.')
+    @app_commands.choices(kind=[app_commands.Choice(name=x,value=x) for x in SAVED_TYPES])
+    async def puzzle_reset(i:discord.Interaction,kind:str):
+        if hub.find(i.guild_id,i.user.id):return await reply(i,'Resign from your active game first.')
+        hub.store.delete_record(f'puzzle:{i.guild_id}:{i.user.id}:{kind}');await reply(i,'Saved puzzle reset.')

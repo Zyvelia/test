@@ -258,3 +258,7 @@ The bot cannot operate while the host is powered off or asleep.
 See the [community, games and dashboard studio guide](COMMUNITY-GAMES-STUDIO.md)
 for case evidence/reviews, ticket activity, LFG, opt-in timezones, reminders,
 favorites, eight additional games, Steam news and visual dashboard editors.
+
+See the [teams, tournaments and profiles guide](TEAMS-PROFILES-TOURNAMENTS.md)
+for invite-source estimates, team recruitment, game libraries, five more games,
+profile cosmetics/privacy and dashboard navigation improvements.

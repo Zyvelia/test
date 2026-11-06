@@ -17,6 +17,11 @@ New: [private case evidence/reviews, support timelines, LFG, reminders, eight ga
 and the dashboard studio](docs/COMMUNITY-GAMES-STUDIO.md). Includes Steam news,
 personal dashboard layouts, welcome/announcement editors and release checks.
 
+Latest expansion: [invite estimates, tournament brackets, teams, build/guide libraries,
+five more games and customizable profiles](docs/TEAMS-PROFILES-TOURNAMENTS.md).
+Includes six starter backgrounds, reviewed uploads, cosmetic loadouts, a dashboard
+command palette, unsaved-change warnings and mobile navigation.
+
 ## What it does
 
 - Custom welcome cards, goodbye messages, safe newcomer roles, and rules acceptance.

@@ -243,6 +243,11 @@ class ViviBot(commands.Bot):
         from .suite import register_suite
         from .game_hub import register_games
         register_suite(self); register_games(self)
+        from .competitions import register_competitions
+        from .guild_library import register_library
+        from .invites import register_invites
+        from .profiles import register_profiles
+        register_competitions(self);register_library(self);register_invites(self);register_profiles(self)
         await self.tree.set_translator(ViviTranslator())
         await self.community.start()
         dev = os.getenv('DEV_GUILD_ID', '').strip()

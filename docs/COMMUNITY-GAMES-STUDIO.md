@@ -26,7 +26,7 @@ apply. Favorites and private timezone preferences do not require an economy/XP
 profile to be public. Saved review history remains privately accessible when new
 review submissions are switched off.
 
-Use `/admin option name:reviewer_role value:ROLE_ID` for a dedicated independent
+Use `/admin setting name:reviewer_role value:ROLE_ID` for a dedicated independent
 reviewer role. Administrators can also review, except when they are the author or
 subject of that submission. Configure `review_channel` with a private text channel
 that denies **@everyone → View Channel**. That channel receives only opaque review

@@ -29,7 +29,7 @@ def guild_checks(store,guild,member=None):
     logs=guild.get_channel(config['logs'])
     if logs: add('staff log privacy',not logs.permissions_for(guild.default_role).view_channel,'Also review other role/member overwrites manually.')
     for feature,permissions in [('moderation',['moderate_members','kick_members','ban_members','manage_messages']),
-                                ('roles',['manage_roles']),('music',['connect','speak']),
+                                ('roles',['manage_roles']),('invite_tracking',['manage_guild']),('music',['connect','speak']),
                                 ('voice_rooms',['manage_channels','move_members'])]:
         if enabled(store,guild.id,feature):
             missing=[p for p in permissions if not getattr(member.guild_permissions,p)]

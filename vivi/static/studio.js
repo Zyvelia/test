@@ -54,4 +54,45 @@
     }
     form.addEventListener('submit',sync);render();
   });
+  // Index existing authorized controls; selecting a result only opens/focuses it.
+  const palette=document.getElementById('command-palette');
+  if(panels&&palette){
+    const search=document.getElementById('palette-search'),results=document.getElementById('palette-results');
+    const entries=[];const navigation=document.getElementById('section-links');
+    [...panels.querySelectorAll(':scope > details[data-panel]')].forEach(section=>{
+      const title=section.querySelector('summary').childNodes[0].textContent.trim();section.id='panel-'+section.dataset.panel;
+      const link=document.createElement('a');link.href='#'+section.id;link.textContent=title;
+      link.addEventListener('click',()=>{section.open=true;const menu=document.getElementById('mobile-navigation');if(menu)menu.open=false;});navigation.append(link);
+      entries.push({label:title,target:section,section});
+      section.querySelectorAll('form').forEach(form=>{
+        const key=form.querySelector('input[name="name"],input[name="feature"]')?.value||'';
+        const label=(key||form.querySelector('label')?.textContent||form.querySelector('button')?.textContent||'Settings').trim().replace(/\s+/g,' ').slice(0,110);
+        const previous=form.previousElementSibling;const heading=previous&&previous.matches('h2,h3,h4')?previous.textContent.trim():'';
+        entries.push({label:title+' · '+(heading?heading+' · ':'')+label,target:form,section,keywords:(form.getAttribute('action')||'')+' '+[...form.querySelectorAll('button')].map(button=>button.textContent).join(' ')});
+      });
+    });
+    const close=()=>{if(typeof palette.close==='function')palette.close();else palette.removeAttribute('open');document.getElementById('palette-open').focus();};
+    function display(){
+      const terms=search.value.toLowerCase().trim().split(/\s+/).filter(Boolean);results.replaceChildren();
+      const matches=entries.filter(entry=>terms.every(term=>(entry.label+' '+(entry.keywords||'')).toLowerCase().includes(term))).slice(0,20);
+      matches.forEach(entry=>{const button=document.createElement('button');button.type='button';button.textContent=entry.label;button.addEventListener('click',()=>{
+        close();entry.section.open=true;entry.target.scrollIntoView?.({block:'center',behavior:'auto'});
+        const control=entry.target.querySelector('input:not([type=hidden]),select,textarea,button');if(control)control.focus();else{entry.target.tabIndex=-1;entry.target.focus();}
+      });results.append(button);});
+      if(!matches.length){const p=document.createElement('p');p.textContent='No matching settings.';results.append(p);}
+    }
+    const open=()=>{if(typeof palette.showModal==='function')palette.showModal();else palette.setAttribute('open','');search.value='';display();search.focus();};
+    document.getElementById('palette-open').addEventListener('click',open);document.getElementById('palette-close').addEventListener('click',close);search.addEventListener('input',display);
+    search.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();results.querySelector('button')?.focus();}});
+    palette.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();close();}});
+    document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){event.preventDefault();open();}});
+  }
+  const panelForm=document.getElementById('panel-layout-form');
+  const syncOrder=()=>{if(panelForm&&panels)panelForm.elements.layout.value=JSON.stringify([...panels.querySelectorAll(':scope > details[data-panel]')].map(x=>x.dataset.panel));};
+  syncOrder();if(panels)panels.addEventListener('click',syncOrder);if(panels)panels.addEventListener('drop',syncOrder);
+  // Compare actual form values, including the editors' hidden JSON documents.
+  const snapshot=form=>JSON.stringify([...new FormData(form)].map(([key,value])=>[key,typeof value==='string'?value:{name:value.name,size:value.size,lastModified:value.name?value.lastModified:0}]));
+  const initialForms=new Map([...document.querySelectorAll('form')].map(form=>[form,snapshot(form)]));let submitting=null;
+  initialForms.forEach((value,form)=>form.addEventListener('submit',()=>{submitting=form;setTimeout(()=>{submitting=null;},1000);}));
+  window.addEventListener('beforeunload',event=>{if([...initialForms].some(([form,original])=>form!==submitting&&snapshot(form)!==original)){event.preventDefault();event.returnValue='';}});
 })();

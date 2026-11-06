@@ -11,6 +11,7 @@ const dom=new JSDOM(fixture.stdout,{runScripts:'outside-only',url:'http://127.0.
 const {window}=dom;const doc=window.document;
 window.HTMLCanvasElement.prototype.getContext=()=>({fillRect(){},beginPath(){},arc(){},fill(){},fillText(){}});
 window.eval(readFileSync(path.join(root,'vivi/static/studio.js'),'utf8'));
+const initialWarning=new window.Event('beforeunload',{cancelable:true});window.dispatchEvent(initialWarning);assert.ok(!initialWarning.defaultPrevented,'unchanged forms and empty file inputs must not warn');
 const panels=doc.getElementById('dashboard-panels');
 let sections=[...panels.querySelectorAll(':scope > details')];
 const first=sections[0];first.querySelectorAll('summary button')[1].click();
@@ -36,5 +37,18 @@ const fieldsets=[...announcement.querySelectorAll('fieldset')];const drop=new wi
 Object.defineProperty(drop,'dataTransfer',{value:{getData:()=>String(fieldsets.length-1)}});fieldsets[1].dispatchEvent(drop);
 assert.equal(JSON.parse(announcement.elements.document.value)[1].type,'field');
 const script=readFileSync(path.join(root,'vivi/static/studio.js'),'utf8');assert.ok(!script.includes('innerHTML'));
-console.log('Dashboard DOM tests passed: panel keyboard order, form serialization, welcome editing, block drag/drop, escaped preview.');
+// Command palette searches rendered authorized controls and opens without submitting.
+const openPalette=doc.getElementById('palette-open');openPalette.click();
+assert.ok(doc.getElementById('command-palette').hasAttribute('open'));
+const search=doc.getElementById('palette-search');search.value='welcome';search.dispatchEvent(new window.Event('input'));
+assert.ok(doc.querySelectorAll('#palette-results button').length>0);
+search.value='publish announcement';search.dispatchEvent(new window.Event('input'));assert.ok(doc.querySelectorAll('#palette-results button').length>0,'action labels should be searchable');
+const target=doc.querySelector('#palette-results button');target.click();
+assert.ok(!doc.getElementById('command-palette').hasAttribute('open'));
+assert.equal(doc.querySelectorAll('#section-links a').length,3,'mobile links should cover all top-level sections');
+const secondLink=doc.querySelectorAll('#section-links a')[1];secondLink.click();assert.ok(doc.getElementById(secondLink.hash.slice(1)).open);
+// A changed editor document warns on navigation; these checks never submit a server request.
+const warning=new window.Event('beforeunload',{cancelable:true});window.dispatchEvent(warning);assert.ok(warning.defaultPrevented,'changed forms must trigger a navigation warning');
+search.value='unfindable-setting-123';search.dispatchEvent(new window.Event('input'));assert.ok(doc.getElementById('palette-results').textContent.includes('No matching'));
+console.log('Dashboard DOM tests passed: panel keyboard order, form serialization, welcome editing, block drag/drop, escaped preview, search palette, mobile navigation, unsaved-change warning.');
 dom.window.close();

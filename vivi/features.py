@@ -6,6 +6,7 @@ import re
 from urllib.parse import urlsplit
 
 FEATURES = {
+    'invite_tracking':False,'competitions':False,'teams':False,'library':False,'profiles':False,
     'staff_reviews': False, 'lfg': False, 'timezone_directory': False, 'reminders': False,
     'welcome': True, 'welcome_cards': False, 'goodbye': False, 'autorole': False,
     'rules': False, 'faq': False, 'automod': False, 'moderation': True,

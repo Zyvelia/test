@@ -112,7 +112,7 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
             'a{color:#87ceeb}form{margin:12px 0;padding:14px;background:#1f2937;border-radius:12px}'
             'button{padding:8px 14px;border:0;border-radius:8px;cursor:pointer}small{color:#aab6c9}'
             'input,select,textarea{box-sizing:border-box;max-width:100%;padding:9px;margin:5px;background:#111827;color:#fff;border:1px solid #6b7280;border-radius:6px}'
-            'textarea{width:95%;min-height:70px}summary{font-size:1.3em;cursor:pointer;padding:15px}label{display:block}table{width:100%;text-align:left}td{padding:7px}</style><script src="/assets/studio.js" defer></script></head><body><nav aria-label="Dashboard navigation"><a href="/">Servers</a> · <a href="#main-content">Skip to main content</a></nav><main id="main-content"><div id="studio-status" role="status" aria-live="polite"></div>'
+            'textarea{width:95%;min-height:70px}summary{font-size:1.3em;cursor:pointer;padding:15px}label{display:block}table{width:100%;text-align:left;display:block;overflow-x:auto}td{padding:7px}canvas{max-width:100%;height:auto}fieldset{min-width:0;margin:10px 0}dialog{width:min(90vw,700px);max-height:80vh;background:#1f2937;color:#fff;border:1px solid #aab6c9;border-radius:12px}dialog::backdrop{background:#0009}#palette-results button{display:block;width:100%;text-align:left;margin:6px 0}#section-links a{display:block;padding:10px}#mobile-navigation{margin:12px 0}button{min-height:40px}@media(max-width:600px){body{margin:8px auto;padding:10px}form{padding:10px}input,select,textarea{width:100%;margin:5px 0}input[type=checkbox],input[type=color]{width:auto}summary{font-size:1.1em}summary button{margin:4px}button{min-height:44px;max-width:100%}#dashboard-controls{position:sticky;top:0;background:#1f2937;padding:6px;z-index:2}#mobile-navigation[open]{max-height:45vh;overflow:auto}}</style><script src="/assets/studio.js" defer></script></head><body><nav aria-label="Dashboard navigation"><a href="/">Servers</a> · <a href="#main-content">Skip to main content</a></nav><main id="main-content"><div id="studio-status" role="status" aria-live="polite"></div>'
             '<style>'+css+'</style><h1>'+html.escape(branding.get('name','Vivi'))+' · '+html.escape(tr(UI_LANGUAGE.get(),'Server Dashboard'))+'</h1><p>'+html.escape(branding.get('tagline',''))+'</p>'+content+'</main></body></html>')
 
     async def index(self,request):
@@ -186,6 +186,7 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
         feature=data.get('feature'); value=data.get('enabled')
         if feature not in FEATURES or value not in {'true','false'}: raise web.HTTPBadRequest(text='Invalid feature setting.')
         self.service.store.set_option(guild,'feature:'+feature,value=='true')
+        if feature=='invite_tracking':self.service.invites.cache.pop(guild,None)
         raise web.HTTPSeeOther('/?guild='+str(guild))
 
     async def logout(self,request):

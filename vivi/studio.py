@@ -41,7 +41,9 @@ class StudioDashboard:
             return f'<details data-panel="{ident}"><summary>'+label+'</summary>'
         content=re.sub(r'<details><summary>([^<]+)</summary>',identify,content)
         order=self.service.store.profile(gid,session['user_id']).get('dashboard_layout',[]) if session.get('user_id') else []
-        return '<div id="dashboard-panels" data-order="'+html.escape(json.dumps(order),quote=True)+'">'+content+'</div>'
+        return ('<div id="dashboard-controls"><button id="palette-open" type="button">Search settings (Ctrl+K)</button><details id="mobile-navigation"><summary>Jump to section</summary><nav id="section-links" aria-label="Dashboard sections"></nav></details></div>'
+            '<dialog id="command-palette" aria-labelledby="palette-title"><h2 id="palette-title">Find settings and actions</h2><label>Search dashboard <input id="palette-search" type="search" autocomplete="off" aria-controls="palette-results"></label><p>Results open the matching control. They do not submit changes.</p><div id="palette-results" aria-live="polite"></div><button id="palette-close" type="button">Close search</button></dialog>'
+            '<div id="dashboard-panels" data-order="'+html.escape(json.dumps(order),quote=True)+'">'+content+'</div>')
     async def panel_layout(self,request):
         data,session,gid,guild=await self.form(request)
         try:

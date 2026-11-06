@@ -136,11 +136,20 @@ class DeleteView(discord.ui.View):
         if self.service.store.ticket_for_user(i.guild_id,i.user.id):
             return await reply(i,'Close your active support ticket first, then request deletion again.')
         await i.response.defer(ephemeral=True)
+        self.service.profiles.delete_banners(self.guild,self.user)
         self.service.store.delete_personal(self.guild,self.user)
         for record in self.service.store.records(self.guild):
             data=record['data']
-            if (record['kind'] in {'appeal','report'} and data.get('author')==self.user) or (record['kind'] in {'ticket_rating','afk','reminder'} and data.get('user')==self.user):
+            if (record['kind'] in {'appeal','report'} and data.get('author')==self.user) or (record['kind'] in {'ticket_rating','afk','reminder','invite_source','puzzle_progress','team_invite','team_application'} and data.get('user')==self.user):
                 self.service.store.delete_record(record['id'])
+            elif record['kind']=='library_entry' and data.get('author')==self.user:
+                self.service.store.delete_record(record['id'])
+            elif record['kind']=='team':
+                data['roster']=[x for x in data['roster'] if x['user']!=self.user]
+                if data['captain']==self.user:
+                    if data['roster']:data['captain']=data['roster'][0]['user']
+                    else:self.service.store.delete_record(record['id']);continue
+                self.service.store.put_record(self.guild,'team',data,record['id'])
             elif record['kind']=='lfg' and data.get('owner')==self.user:
                 self.service.store.delete_record(record['id'])
             elif record['kind']=='lfg' and self.user in data.get('members',[]):
@@ -207,6 +216,9 @@ class Community:
         from .suite import Suite
         from .game_hub import GameHub
         self.suite=Suite(self); self.games=GameHub(self)
+        from .invites import InviteTracker
+        from .profiles import ProfileCards
+        self.invites=InviteTracker(self); self.profiles=ProfileCards(self)
         self.bot.add_listener(self.on_message,'on_message')
         self.bot.add_listener(self.on_message_edit,'on_message_edit')
         self.bot.add_listener(self.on_member_remove,'on_member_remove')
@@ -233,6 +245,8 @@ class Community:
         self.task=asyncio.create_task(self.scheduler(),name='vivi-scheduler')
         self.notification_task=asyncio.create_task(self.notification_scheduler(),name='vivi-notifications')
         self.suite.start(); self.games.start_task()
+        from .guild_library import restore_team_panels
+        restore_team_panels(self)
 
     async def close(self):
         await self.suite.close(); await self.games.close()
@@ -512,6 +526,7 @@ def register_extra(bot):
     async def feature(i:discord.Interaction,name:str,enabled:bool):
         if name not in FEATURES: return await reply(i,'Unknown feature. Use the suggestions.')
         store.set_option(i.guild_id,'feature:'+name,enabled)
+        if name=='invite_tracking':service.invites.cache.pop(i.guild_id,None)
         await reply(i,f'{name}: {"ON" if enabled else "OFF"}.')
 
     @admin_command('verify','Check this server’s bot permissions without posting test messages.')
@@ -884,19 +899,12 @@ def register_extra(bot):
 
     @economy.command(name='profile',description='Show levels, currency, achievements, and your cosmetic profile title.')
     async def profile(i:discord.Interaction,member:discord.Member=None):
-        if not (enabled(store,i.guild_id,'xp') or enabled(store,i.guild_id,'economy')): return await reply(i,'Enable xp or economy through /admin feature first.')
-        member=member or i.user; p=store.profile(i.guild_id,member.id)
-        if not p['visible'] and member.id!=i.user.id: return await reply(i,'This member’s profile is private.')
-        item=SHOP.get(p['equipped']); title=item[1] if item else 'Member'; tint=item[2] if item else 0x87CEEB
-        embed=discord.Embed(title=f'{member.display_name} · {title}',color=tint,
-            description=f'Level {p["xp"]//100} · {p["xp"]} XP\n{p["coins"]} virtual coins\nAchievements: '+(', '.join(p['achievements']) or 'None yet'))
-        embed.set_footer(text=store.option(i.guild_id,'branding',{}).get('name','Vivi'))
-        await i.response.send_message(embed=embed,ephemeral=not p['visible'])
+        await service.profiles.show(i,member)
 
     @economy.command(name='leaderboard',description='Show the top ten members who have not opted out.')
     async def leaderboard(i:discord.Interaction):
         if not await service.need(i,'xp'): return
-        people=[(uid,p) for uid,p in store.profiles(i.guild_id) if p['visible'] and i.guild.get_member(uid)]
+        people=[(uid,p) for uid,p in store.profiles(i.guild_id) if p['visible'] and p.get('card_visibility',{}).get('xp',True) and i.guild.get_member(uid)]
         people.sort(key=lambda pair:pair[1]['xp'],reverse=True)
         await reply(i,'\n'.join(f'{n}. {i.guild.get_member(uid).display_name} — {p["xp"]} XP' for n,(uid,p) in enumerate(people[:10],1)) or 'No public profiles yet.')
 
