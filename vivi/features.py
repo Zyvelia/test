@@ -6,6 +6,7 @@ import re
 from urllib.parse import urlsplit
 
 FEATURES = {
+    'staff_reviews': False, 'lfg': False, 'timezone_directory': False, 'reminders': False,
     'welcome': True, 'welcome_cards': False, 'goodbye': False, 'autorole': False,
     'rules': False, 'faq': False, 'automod': False, 'moderation': True,
     'appeals': False, 'reports': False, 'roles': True, 'tickets': True,
@@ -26,7 +27,7 @@ OPTION_TYPES = {
     'raid_channel': int, 'raid_lock_minutes': int, 'warning_count': int,
     'warning_timeout_minutes': int, 'warning_window_days': int,
     'ticket_categories': dict, 'voice_lobby': int, 'voice_category': int,
-    'voice_user_limit': int, 'language': str, 'backup_hours': int, 'backup_keep': int, 'aliases': dict, 'xp_channels': dict, 'branding': dict,
+    'voice_user_limit': int, 'language': str, 'backup_hours': int, 'backup_keep': int, 'aliases': dict, 'xp_channels': dict, 'branding': dict, 'review_channel': int, 'reviewer_role': int, 'lfg_channel': int, 'lfg_hours': int, 'welcome_layout': dict,
 }
 TRIVIA = [
     ('Which planet is the largest?', ['Jupiter','Earth','Mars','Venus'],0),
@@ -67,6 +68,11 @@ def validate_option(key, value):
         return
     if key not in OPTION_TYPES or type(value) is not OPTION_TYPES[key]: raise ValueError('Unknown setting or invalid type.')
     if isinstance(value,str) and len(value)>1800: raise ValueError('Setting is too long.')
+    if key=='welcome_layout':
+        from .studio_layout import validate_layout
+        validate_layout(value)
+    if key=='lfg_hours' and not 1<=value<=72: raise ValueError('LFG lifetime must be 1–72 hours.')
+    if key in {'review_channel','reviewer_role','lfg_channel'} and not 0<=value<2**63: raise ValueError('Invalid Discord ID.')
     if key=='xp_channels':
         from .customization import validate_xp
         validate_xp(value)

@@ -128,7 +128,7 @@ class OpenTicketView(discord.ui.View):
                     category=category, overwrites=overwrites, reason='Vivi support ticket')
                 self.bot.store.add_ticket(i.guild.id, i.user.id, channel.id)
                 recorded = True
-                self.bot.community.operations.save_ticket_meta(i.guild.id,channel.id,dict(category=category_label,priority='normal',claimed=0))
+                self.bot.community.operations.save_ticket_meta(i.guild.id,channel.id,dict(category=category_label,priority='normal',claimed=0,tags=[]),actor=i.user.id)
                 await channel.send(f'Welcome {i.user.mention}! Describe your issue below. '
                     'Server administrators and the configured support staff can see this channel. '
                     'Closing saves the most recent 1,000 messages, then deletes the channel.',
@@ -183,7 +183,10 @@ class ConfirmClose(discord.ui.View):
             try:
                 # Fetch newest messages, then put the limited transcript in chronological order.
                 messages = [m async for m in i.channel.history(limit=1000)]
-                lines = [f'Ticket {i.channel_id}; owner {ticket["user"]}; closed by {i.user.id}',
+                from .suite import ticket_event,timeline
+                ticket_event(self.bot.store,i.guild_id,i.channel_id,i.user.id,'closing','Transcript requested')
+                activity=timeline(self.bot.store,i.guild_id,i.channel_id,i.user.id,True)
+                lines = [activity,f'Ticket {i.channel_id}; owner {ticket["user"]}; closed by {i.user.id}',
                          'Most recent 1,000 messages. Attachments are links, not downloaded copies.',
                          str(self.bot.community.operations.ticket_meta(i.channel_id))]
                 for m in reversed(messages):
@@ -237,6 +240,9 @@ class ViviBot(commands.Bot):
         register_productivity(self)
         from .customization import register_customization
         register_customization(self)
+        from .suite import register_suite
+        from .game_hub import register_games
+        register_suite(self); register_games(self)
         await self.tree.set_translator(ViviTranslator())
         await self.community.start()
         dev = os.getenv('DEV_GUILD_ID', '').strip()

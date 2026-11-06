@@ -22,7 +22,9 @@ from .customization import UI_BRAND,THEMES,validate_brand
 from .dashboard_tools import DashboardTools
 from .i18n import UI_LANGUAGE,localize_html,tr
 
-class Dashboard(AdvancedDashboard,DashboardTools):
+from .studio import StudioDashboard
+
+class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
     def __init__(self,service):
         self.service=service; self.sessions={}; self.states={}; self.runner=None
         self.client=os.getenv('DISCORD_CLIENT_ID','').strip()
@@ -47,7 +49,7 @@ class Dashboard(AdvancedDashboard,DashboardTools):
                              web.get('/revision',self.revision),web.post('/rollback',self.rollback),
                              web.post('/backup-now',self.backup_now),web.get('/scheduled-backup',self.scheduled_backup),
                              web.post('/aliases',self.aliases),web.get('/health',self.health),web.post('/xp-channel',self.xp_channel),
-                             web.post('/branding',self.branding),web.post('/filters',self.filters)])
+                             web.post('/branding',self.branding),web.post('/filters',self.filters)]+self.studio_routes())
 
     @web.middleware
     async def security(self,request,handler):
@@ -72,7 +74,7 @@ class Dashboard(AdvancedDashboard,DashboardTools):
     def headers(response):
         response.headers.update({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
             'Referrer-Policy':'no-referrer','X-Frame-Options':'DENY',
-            'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
+            'Content-Security-Policy':"default-src 'none'; script-src 'self'; img-src 'self' blob:; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
 
     def session(self,request):
         sid=request.cookies.get('vivi_session',''); session=self.sessions.get(sid)
@@ -105,13 +107,13 @@ class Dashboard(AdvancedDashboard,DashboardTools):
         except ValueError: branding={}
         palette=dict(THEMES[branding.get('theme','midnight')]);palette['accent']=branding.get('accent',palette['accent'])
         css=f"body{{background:{palette['background']};color:{palette['text']}}}form,input,select,textarea{{background:{palette['panel']};color:{palette['text']}}}a{{color:{palette['accent']}}}button{{background:{palette['accent']};color:{palette['background']}}}"
-        return web.Response(content_type='text/html',text='<!doctype html><html><head><meta charset="utf-8"><title>Vivi Dashboard</title>'
+        return web.Response(content_type='text/html',text='<!doctype html><html lang="'+UI_LANGUAGE.get()+'"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vivi Dashboard</title>'
             '<style>body{font:16px system-ui;background:#111827;color:#e5e7eb;max-width:850px;margin:40px auto;padding:20px}'
             'a{color:#87ceeb}form{margin:12px 0;padding:14px;background:#1f2937;border-radius:12px}'
             'button{padding:8px 14px;border:0;border-radius:8px;cursor:pointer}small{color:#aab6c9}'
             'input,select,textarea{box-sizing:border-box;max-width:100%;padding:9px;margin:5px;background:#111827;color:#fff;border:1px solid #6b7280;border-radius:6px}'
-            'textarea{width:95%;min-height:70px}summary{font-size:1.3em;cursor:pointer;padding:15px}label{display:block}table{width:100%;text-align:left}td{padding:7px}</style></head><body>'
-            '<style>'+css+'</style><h1>'+html.escape(branding.get('name','Vivi'))+' · '+html.escape(tr(UI_LANGUAGE.get(),'Server Dashboard'))+'</h1><p>'+html.escape(branding.get('tagline',''))+'</p>'+content+'</body></html>')
+            'textarea{width:95%;min-height:70px}summary{font-size:1.3em;cursor:pointer;padding:15px}label{display:block}table{width:100%;text-align:left}td{padding:7px}</style><script src="/assets/studio.js" defer></script></head><body><nav aria-label="Dashboard navigation"><a href="/">Servers</a> · <a href="#main-content">Skip to main content</a></nav><main id="main-content"><div id="studio-status" role="status" aria-live="polite"></div>'
+            '<style>'+css+'</style><h1>'+html.escape(branding.get('name','Vivi'))+' · '+html.escape(tr(UI_LANGUAGE.get(),'Server Dashboard'))+'</h1><p>'+html.escape(branding.get('tagline',''))+'</p>'+content+'</main></body></html>')
 
     async def index(self,request):
         if not request.cookies.get('vivi_session'): return self.page('<p><a href="/login">Sign in with Discord</a></p><p>Local dashboard: server administrators only.</p>')
@@ -133,7 +135,7 @@ class Dashboard(AdvancedDashboard,DashboardTools):
                          f'<input type="hidden" name="guild" value="{guild}"><input type="hidden" name="feature" value="{feature}">'
                          f'<input type="hidden" name="enabled" value="{str(not on).lower()}"><b>{feature}</b>: {"ON" if on else "OFF"} '
                          f'<button>{"Disable" if on else "Enable"}</button></form>')
-        return self.page(f'<h2>{name}</h2><p><a href="/">All servers</a></p><p>Manage Vivi for this server. Optional AI, voice and notification providers need local host configuration.</p><details><summary>Feature switches</summary>'+''.join(forms)+'</details>'+self.settings_forms(guild,session)+self.logout_form(session))
+        return self.page(self.personalize(f'<h2>{name}</h2><p><a href="/">All servers</a></p><p>Manage Vivi for this server. Optional AI, voice and notification providers need local host configuration.</p><details><summary>Feature switches</summary>'+''.join(forms)+'</details>'+self.settings_forms(guild,session)+self.logout_form(session),guild,session))
 
     @staticmethod
     def logout_form(session):
@@ -214,9 +216,9 @@ class Dashboard(AdvancedDashboard,DashboardTools):
         setup+='<button>Save server setup</button></form></details>'
         fields='<details><summary>Welcome, moderation, AI channels and other settings</summary>'
         channel_keys={'goodbye_channel':texts,'birthday_channel':texts,'daily_channel':texts,'raid_channel':texts,
-                      'voice_category':categories,'voice_lobby':voices,'autorole':roles,'rules_role':roles}
+                      'voice_category':categories,'voice_lobby':voices,'autorole':roles,'rules_role':roles,'reviewer_role':roles,'review_channel':texts,'lfg_channel':texts}
         for key,typ in OPTION_TYPES.items():
-            if key in {'faq','ticket_categories','aliases','xp_channels','branding'}: continue
+            if key in {'faq','ticket_categories','aliases','xp_channels','branding','welcome_layout'}: continue
             default=DEFAULTS.get(key,[] if typ is list else False if typ is bool else 0 if typ is int else '')
             if key=='welcome_text': default=tr(store.option(gid,'language','en'),'Welcome {member} to {server}!')+' '+tr(store.option(gid,'language','en'),'Please read the rules and choose your roles.')
             if key=='goodbye_text': default=tr(store.option(gid,'language','en'),'Goodbye {member}.')
@@ -251,10 +253,10 @@ class Dashboard(AdvancedDashboard,DashboardTools):
             d=record['data']
             subscriptions+='<form action="/subscription" method="post">'+hidden+f'<input type="hidden" name="id" value="{record["id"]}">{html.escape(d["provider"])}: {html.escape(d["source"])} → {d["channel"]}<br><small>Last error: {html.escape(d.get("error") or "none recorded")}</small> <button name="action" value="remove">Remove</button></form>'
             subscriptions+='<form action="/subscription-test" method="post">'+hidden+f'<input type="hidden" name="id" value="{record["id"]}"><button>Test provider metadata (no Discord post)</button></form>'
-        subscriptions+='<form action="/subscription" method="post">'+hidden+self.select('provider',[(x,x) for x in ['twitch','youtube','github_releases','github_commits','webhook']])+self.select('channel',texts)+'<input name="source" placeholder="Twitch login / UC channel ID / owner/repo" required><button name="action" value="add">Add subscription</button></form></details>'
+        subscriptions+='<form action="/subscription" method="post">'+hidden+self.select('provider',[(x,x) for x in ['twitch','youtube','github_releases','github_commits','webhook','steam']])+self.select('channel',texts)+'<input name="source" placeholder="Twitch login / UC channel ID / owner/repo" required><button name="action" value="add">Add subscription</button></form></details>'
         backup=f'<details><summary>Backup and restore</summary><p><a href="/backup?guild={gid}">Download configuration backup</a></p><form action="/restore" method="post" enctype="multipart/form-data">'+hidden+'<input name="file" type="file" accept=".json" required><label><input name="confirm" type="checkbox" value="yes" required> Replace this server’s configuration with the backup</label><button>Restore configuration</button></form></details>'
         verification='<details><summary>Live permission and provider checks</summary><form action="/verify" method="post">'+hidden+'<label><input name="providers" type="checkbox" value="yes"> Also send a small AI/translation test request (provider charges may apply)</label><button>Run checks without posting Discord messages</button></form></details>'
-        return setup+fields+faq+tickets+subscriptions+backup+verification+self.tools_forms(gid,session)+self.advanced_forms(gid,session)
+        return setup+fields+faq+tickets+subscriptions+backup+verification+self.tools_forms(gid,session)+self.advanced_forms(gid,session)+self.studio_forms(gid,session)
 
     async def form(self,request):
         data=await request.post(); session=self.session(request)

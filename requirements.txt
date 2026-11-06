@@ -4,3 +4,4 @@ Pillow==12.0.0
 tzdata==2025.2
 pystray==0.19.5; sys_platform == "win32"
 cryptography==50.0.2
+chess==1.11.2

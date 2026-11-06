@@ -21,7 +21,7 @@ LOG=logging.getLogger('vivi.operations')
 
 def subscription(provider,source,channel,filters=None):
     source=source.strip()
-    patterns={'webhook':r'[A-Za-z0-9_-]{1,64}', 'twitch':r'[A-Za-z0-9_]{1,25}', 'youtube':r'UC[A-Za-z0-9_-]{22}',
+    patterns={'steam':r'[1-9][0-9]{0,9}', 'webhook':r'[A-Za-z0-9_-]{1,64}', 'twitch':r'[A-Za-z0-9_]{1,25}', 'youtube':r'UC[A-Za-z0-9_-]{22}',
               'github_releases':r'[A-Za-z0-9_-]{1,39}/[A-Za-z0-9_.-]{1,100}',
               'github_commits':r'[A-Za-z0-9_-]{1,39}/[A-Za-z0-9_.-]{1,100}'}
     if provider not in patterns or not re.fullmatch(patterns[provider],source) or source.split('/')[-1] in {'.','..'}:
@@ -67,9 +67,15 @@ class Operations:
 
     def ticket_meta(self,channel):
         record=self.store.record(f'ticket:{channel}')
-        return record['data'] if record else dict(category='General',priority='normal',claimed=0)
+        data=record['data'] if record else dict(category='General',priority='normal',claimed=0)
+        data.setdefault('tags',[])
+        return data
 
-    def save_ticket_meta(self,guild,channel,data):
+    def save_ticket_meta(self,guild,channel,data,actor=0):
+        from .suite import ticket_event
+        old=self.store.record(f'ticket:{channel}')
+        changes={key:value for key,value in data.items() if not old or old['data'].get(key)!=value}
+        if changes: ticket_event(self.store,guild,channel,actor,'updated' if old else 'opened',json.dumps(changes))
         self.store.put_record(guild,'ticket_meta',data,f'ticket:{channel}')
 
     def staff(self,i):
@@ -77,6 +83,8 @@ class Operations:
         return config and (i.user.guild_permissions.manage_channels or any(r.id==config['staff'] for r in i.user.roles))
 
     async def closed(self,guild,ticket):
+        from .suite import ticket_event
+        ticket_event(self.store,guild.id,ticket['channel'],0,'closed','Channel deleted; transcript retained')
         data=self.ticket_meta(ticket['channel']); self.store.delete_record(f'ticket:{ticket["channel"]}')
         if not enabled(self.store,guild.id,'ticket_tools'): return
         data.update(user=ticket['user'],channel=ticket['channel'],expires=time.time()+7*86400,rating=0)
@@ -129,6 +137,11 @@ class Operations:
     async def events(self,data,guild_id=None):
         """Fetch provider metadata from fixed hosts only. Never follow credential-bearing redirects."""
         session=self.service.session; provider=data['provider']; source=data['source']
+        if provider=='steam':
+            async with session.get('https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/',params={'appid':source,'count':5,'maxlength':0},allow_redirects=False) as response:
+                if response.status!=200: raise ValueError(f'Steam returned HTTP {response.status}.')
+                payload=await response.json()
+            return [dict(id=str(x['gid']),title=x.get('title','Steam news'),url=x['url']) for x in payload.get('appnews',{}).get('newsitems',[])][:5]
         if provider.startswith('github_'):
             headers={'Accept':'application/vnd.github+json','User-Agent':'Vivi-Discord-Bot'}
             bindings=json.loads(os.getenv('NOTIFY_GITHUB_ACCESS','{}'))
@@ -222,7 +235,7 @@ def register_operations(bot):
         async with bot.ticket_lock:
             data=ops.ticket_meta(i.channel_id)
             if data['claimed'] and data['claimed']!=i.user.id: return await reply(i,f'Already claimed by <@{data["claimed"]}>. They can release it, or a channel manager can use /ticket release.')
-            data['claimed']=i.user.id; ops.save_ticket_meta(i.guild_id,i.channel_id,data)
+            data['claimed']=i.user.id; ops.save_ticket_meta(i.guild_id,i.channel_id,data,actor=i.user.id)
         await reply(i,'Ticket claimed.'); await audit(bot,i.guild,f'Ticket {i.channel_id} claimed by {i.user.id}.')
 
     @tickets.command(name='release',description='Release your claim, or override a claim with Manage Channels.')
@@ -231,7 +244,7 @@ def register_operations(bot):
         async with bot.ticket_lock:
             data=ops.ticket_meta(i.channel_id)
             if data['claimed'] not in {0,i.user.id} and not i.user.guild_permissions.manage_channels: return await reply(i,'Only the claimant or a channel manager can release this ticket.')
-            data['claimed']=0; ops.save_ticket_meta(i.guild_id,i.channel_id,data)
+            data['claimed']=0; ops.save_ticket_meta(i.guild_id,i.channel_id,data,actor=i.user.id)
         await reply(i,'Ticket released.')
 
     @tickets.command(name='priority',description='Set this ticket’s staff priority.')
@@ -240,7 +253,7 @@ def register_operations(bot):
         if not await staff(i): return
         if value not in {'low','normal','high','urgent'}: return await reply(i,'Invalid priority.')
         async with bot.ticket_lock:
-            data=ops.ticket_meta(i.channel_id); data['priority']=value; ops.save_ticket_meta(i.guild_id,i.channel_id,data)
+            data=ops.ticket_meta(i.channel_id); data['priority']=value; ops.save_ticket_meta(i.guild_id,i.channel_id,data,actor=i.user.id)
         await reply(i,f'Priority: {value}.'); await audit(bot,i.guild,f'Ticket {i.channel_id} priority set to {value} by {i.user.id}.')
 
     @tickets.command(name='category',description='Move this ticket to a configured support category, preserving its privacy overwrites.')
@@ -252,7 +265,7 @@ def register_operations(bot):
         await i.response.defer(ephemeral=True)
         async with bot.ticket_lock:
             await i.channel.edit(category=target,sync_permissions=False,reason=f'Vivi ticket category by {i.user.id}')
-            data=ops.ticket_meta(i.channel_id); data['category']=label; ops.save_ticket_meta(i.guild_id,i.channel_id,data)
+            data=ops.ticket_meta(i.channel_id); data['category']=label; ops.save_ticket_meta(i.guild_id,i.channel_id,data,actor=i.user.id)
         await reply(i,'Category updated; ticket privacy permissions were preserved.')
 
     @tickets.command(name='status',description='Show this ticket’s category, priority and claimant.')
@@ -264,7 +277,7 @@ def register_operations(bot):
 
     @notify.command(name='add',description='Watch a Twitch login, YouTube UC channel ID, or GitHub owner/repository.')
     @app_commands.check(admin)
-    @app_commands.choices(provider=[app_commands.Choice(name=x,value=x) for x in ['twitch','youtube','github_releases','github_commits','webhook']])
+    @app_commands.choices(provider=[app_commands.Choice(name=x,value=x) for x in ['twitch','youtube','github_releases','github_commits','webhook','steam']])
     async def add(i:discord.Interaction,provider:str,source:str,channel:discord.TextChannel):
         if not await service.need(i,'notifications'): return
         if len(store.records(i.guild_id,'notification'))>=20: return await reply(i,'Maximum 20 subscriptions per server.')

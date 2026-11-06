@@ -100,7 +100,7 @@ class Productivity:
 
     def health(self,guild):
         latency=self.bot.latency
-        counts={kind:len(self.store.records(guild,kind)) for kind in ['poll','giveaway','notification','voice_room']}
+        counts={kind:len(self.store.records(guild,kind)) for kind in ['poll','giveaway','notification','voice_room','reminder','lfg']}
         tickets=self.store.db.execute('SELECT COUNT(*) FROM tickets WHERE guild=?',(guild,)).fetchone()[0]
         task=self.service.task;notifications=self.service.notification_task
         return dict(gateway='connected' if self.bot.is_ready() else 'not connected',
@@ -108,6 +108,9 @@ class Productivity:
                     latency_ms=round(latency*1000) if math.isfinite(latency) else None,
                     timer_loop='running' if task and not task.done() else 'not running',
                     notification_loop='running' if notifications and not notifications.done() else 'not running',
+                    personal_timer_loop='running' if self.service.suite.task and not self.service.suite.task.done() else 'not running',
+                    game_timer_loop='running' if self.service.games.task and not self.service.games.task.done() else 'not running',
+                    active_games=sum(key[0]==guild for key in self.service.games.sessions),
                     last_timer_tick=self.last_tick or None,open_tickets=tickets,records=counts,
                     audio_queue=len(self.service.voice.queues.get(guild,[])),
                     webhook_jobs=[dict(id=r['id'],attempts=r['data']['attempts'],error=r['data'].get('error','')) for r in self.store.records(guild,'webhook_job')],

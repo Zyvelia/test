@@ -1,0 +1,1 @@
+{"name":"vivi-dashboard-tests","private":true,"scripts":{"test":"node studio.test.cjs"},"devDependencies":{"jsdom":"26.1.0"}}

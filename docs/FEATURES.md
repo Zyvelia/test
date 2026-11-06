@@ -253,3 +253,8 @@ retained when rotated). Logs may contain Discord IDs and error details: keep the
 private. Optional automatic startup is now available through Windows Task Scheduler
 or Linux systemd user services; see [Vivi upgrades](VIVI-UPGRADE.md) and [Linux setup](LINUX.md).
 The bot cannot operate while the host is powered off or asleep.
+
+
+See the [community, games and dashboard studio guide](COMMUNITY-GAMES-STUDIO.md)
+for case evidence/reviews, ticket activity, LFG, opt-in timezones, reminders,
+favorites, eight additional games, Steam news and visual dashboard editors.

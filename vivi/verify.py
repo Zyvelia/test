@@ -34,6 +34,13 @@ def guild_checks(store,guild,member=None):
         if enabled(store,guild.id,feature):
             missing=[p for p in permissions if not getattr(member.guild_permissions,p)]
             add(feature+' permissions',not missing,'Missing: '+', '.join(missing) if missing else 'Server-wide permissions are available; channel overrides and target role hierarchy still apply.')
+    for feature,key in [('lfg','lfg_channel'),('staff_reviews','review_channel')]:
+        if not enabled(store,guild.id,feature): continue
+        channel=guild.get_channel(store.option(guild.id,key,0))
+        if not channel: add(feature+' channel',False,'Configure '+key+' to an existing text channel.'); continue
+        actual=channel.permissions_for(member)
+        add(feature+' channel',actual.view_channel and actual.send_messages,'Vivi needs View Channel and Send Messages.')
+        if feature=='staff_reviews': add('review notification privacy',not channel.permissions_for(guild.default_role).view_channel,'Deny @everyone View Channel; review all other overwrites manually.')
     if enabled(store,guild.id,'music'): add('FFmpeg',bool(shutil.which(os.getenv('FFMPEG_PATH','ffmpeg'))),'FFmpeg must be installed on the host PC.')
     return checks
 

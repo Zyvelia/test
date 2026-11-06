@@ -39,7 +39,10 @@ def safe_role(guild, store, role):
 
 def color(value): return int(value.lstrip('#'),16)
 
-def card_bytes(name, server, text, accent, avatar=None, greeting=None, brand=None):
+def card_bytes(name, server, text, accent, avatar=None, greeting=None, brand=None, layout=None):
+    if layout:
+        from .studio_layout import render_layout
+        return render_layout(layout,name,server,text,avatar,greeting,brand or "Vivi")
     image=Image.new('RGB',(900,260),(18,24,38)); d=ImageDraw.Draw(image)
     d.rounded_rectangle((5,5,894,254),radius=22,outline=accent,width=4)
     font=ImageFont.load_default(size=26); small=ImageFont.load_default(size=18)
@@ -136,8 +139,12 @@ class DeleteView(discord.ui.View):
         self.service.store.delete_personal(self.guild,self.user)
         for record in self.service.store.records(self.guild):
             data=record['data']
-            if (record['kind'] in {'appeal','report'} and data.get('author')==self.user) or (record['kind'] in {'ticket_rating','afk'} and data.get('user')==self.user):
+            if (record['kind'] in {'appeal','report'} and data.get('author')==self.user) or (record['kind'] in {'ticket_rating','afk','reminder'} and data.get('user')==self.user):
                 self.service.store.delete_record(record['id'])
+            elif record['kind']=='lfg' and data.get('owner')==self.user:
+                self.service.store.delete_record(record['id'])
+            elif record['kind']=='lfg' and self.user in data.get('members',[]):
+                data['members'].remove(self.user); self.service.store.put_record(self.guild,'lfg',data,record['id'])
             elif record['kind']=='report' and data.get('target')==self.user:
                 data['target']=0; self.service.store.put_record(self.guild,record['kind'],data,record['id'])
         ident=self.service.store.put_record(self.guild,'privacy',dict(author=self.user,text='Delete remaining identifiable moderation and retained records',status='pending'))
@@ -197,6 +204,9 @@ class Community:
         self.productivity=Productivity(self)
         from .webhooks import Webhooks
         self.webhooks=Webhooks(self)
+        from .suite import Suite
+        from .game_hub import GameHub
+        self.suite=Suite(self); self.games=GameHub(self)
         self.bot.add_listener(self.on_message,'on_message')
         self.bot.add_listener(self.on_message_edit,'on_message_edit')
         self.bot.add_listener(self.on_member_remove,'on_member_remove')
@@ -222,8 +232,10 @@ class Community:
             LOG.error('Webhook listener not started; check its signing secret, bind and port.')
         self.task=asyncio.create_task(self.scheduler(),name='vivi-scheduler')
         self.notification_task=asyncio.create_task(self.notification_scheduler(),name='vivi-notifications')
+        self.suite.start(); self.games.start_task()
 
     async def close(self):
+        await self.suite.close(); await self.games.close()
         await self.webhooks.close()
         if self.notification_task:
             self.notification_task.cancel()
@@ -294,7 +306,7 @@ class Community:
             if enabled(self.store,guild.id,'welcome_cards'):
                 avatar=await member.display_avatar.with_size(256).with_format('png').read()
                 data=await asyncio.to_thread(card_bytes,member.display_name,guild.name,
-                    text.replace(member.mention,member.display_name),self.store.option(guild.id,'welcome_color','#87CEEB'),avatar,tr(language,'Welcome, {name}!',name=member.display_name[:30]),self.store.option(guild.id,'branding',{}).get('name','Vivi'))
+                    text.replace(member.mention,member.display_name),self.store.option(guild.id,'welcome_color','#87CEEB'),avatar,tr(language,'Welcome, {name}!',name=member.display_name[:30]),self.store.option(guild.id,'branding',{}).get('name','Vivi'),self.store.option(guild.id,'welcome_layout',None))
                 await channel.send(text,file=discord.File(io.BytesIO(data),filename='welcome.png'),
                                    allowed_mentions=discord.AllowedMentions(users=[member],roles=False,everyone=False))
             else: await channel.send(text,allowed_mentions=discord.AllowedMentions(users=[member],roles=False,everyone=False))

@@ -16,6 +16,8 @@ class Store:
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript("""
+            CREATE TABLE IF NOT EXISTS ticket_events (id INTEGER PRIMARY KEY,guild INTEGER,channel INTEGER,owner INTEGER,actor INTEGER,action TEXT,details TEXT,at REAL);
+            CREATE INDEX IF NOT EXISTS ticket_event_channel ON ticket_events(guild,channel,id);
             CREATE TABLE IF NOT EXISTS config_history (id INTEGER PRIMARY KEY, guild INTEGER, actor TEXT, action TEXT, before_json TEXT, after_json TEXT, created TEXT DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS settings (
                 guild INTEGER PRIMARY KEY, welcome INTEGER NOT NULL,

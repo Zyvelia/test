@@ -7,7 +7,7 @@ from .policy import safe_self_role
 DEFAULTS={'welcome_text':'Welcome {member} to {server}!','welcome_color':'#87CEEB',
  'goodbye_text':'Goodbye {member}.','spam_limit':6,'daily_hour':9,'timezone':'UTC','ai_limit':20,
  'mention_limit':5,'raid_limit':8,'raid_window':30,'raid_action':'alert','raid_lock_minutes':5,
- 'language':'en','backup_hours':24,'backup_keep':7, 'warning_count':3,'warning_timeout_minutes':10,'warning_window_days':30,'voice_user_limit':0}
+ 'lfg_hours':24,'language':'en','backup_hours':24,'backup_keep':7, 'warning_count':3,'warning_timeout_minutes':10,'warning_window_days':30,'voice_user_limit':0}
 
 def parse_value(name,text):
     if name not in OPTION_TYPES: raise ValueError('Unknown setting.')
@@ -32,11 +32,16 @@ def validate_resources(store,guild,name,value):
         role=guild.get_role(value)
         if not config or not role or role.id==config['staff'] or not safe_self_role(role,guild.me):
             raise ValueError('Choose a safe non-staff role below Vivi; configure server channels first.')
-    channels={'goodbye_channel':discord.TextChannel,'birthday_channel':discord.TextChannel,
+    channels={'review_channel':discord.TextChannel,'lfg_channel':discord.TextChannel,'goodbye_channel':discord.TextChannel,'birthday_channel':discord.TextChannel,
               'daily_channel':discord.TextChannel,'raid_channel':discord.TextChannel,
               'voice_lobby':discord.VoiceChannel,'voice_category':discord.CategoryChannel}
     if name in channels and value and not isinstance(guild.get_channel(value),channels[name]):
         raise ValueError('Choose an existing channel of the correct type in this server.')
+    if name=='review_channel' and value and guild.get_channel(value).permissions_for(guild.default_role).view_channel:
+        raise ValueError('The review notification channel must deny @everyone View Channel.')
+    if name=='reviewer_role' and value:
+        role=guild.get_role(value)
+        if not role or role.is_default() or role.managed: raise ValueError('Choose a dedicated human reviewer role.')
     if name=='ai_channels' and any(not isinstance(guild.get_channel(x),discord.TextChannel) for x in value):
         raise ValueError('Choose text channels in this server.')
     if name=='xp_channels' and any(not isinstance(guild.get_channel(int(x)),(discord.TextChannel,discord.ForumChannel)) for x in value):

@@ -13,6 +13,10 @@ Also available: [per-channel XP, themes/branding, signed incoming hooks,
 notification filters and encrypted full-data backups](docs/ADVANCED.md).
 Instant hooks require your own HTTPS endpoint; encrypted full-data backups are host-only.
 
+New: [private case evidence/reviews, support timelines, LFG, reminders, eight games,
+and the dashboard studio](docs/COMMUNITY-GAMES-STUDIO.md). Includes Steam news,
+personal dashboard layouts, welcome/announcement editors and release checks.
+
 ## What it does
 
 - Custom welcome cards, goodbye messages, safe newcomer roles, and rules acceptance.
