@@ -172,3 +172,15 @@ class Battleship:
         own='\n'.join(str(6-r)+' '+''.join('X' if (r,c) in shots and (r,c) in self.fleets[player] else 'o' if (r,c) in shots else 'S' if (r,c) in self.fleets[player] else '.' for c in range(6)) for r in range(6))
         target='\n'.join(str(6-r)+' '+''.join('X' if (r,c) in self.shots[player] and (r,c) in self.fleets[1-player] else 'o' if (r,c) in self.shots[player] else '.' for c in range(6)) for r in range(6))
         return 'Your fleet:\n```\n'+own+'\n  ABCDEF\n```Your shots:\n```\n'+target+'\n  ABCDEF\n```'+self.last
+
+class TicTacToe:
+    help='Choose an empty square below, or enter a coordinate such as A3. Connect three Xs or Os.'
+    def __init__(self):self.cells=['']*9;self.turn=0;self.done=False;self.result=''
+    def move(self,text):
+        from .features import win_board
+        r,c=square(text,3);n=r*3+c
+        if self.cells[n]:raise ValueError('That square is occupied.')
+        self.cells[n]='X' if self.turn==0 else 'O';result=win_board(self.cells)
+        if result:self.done=True;self.result='Draw!' if result=='draw' else f'Player {self.turn+1} ({result}) wins!'
+        else:self.turn=1-self.turn
+    def board(self,player=0):return '```\n'+'\n'.join(str(3-r)+' '+''.join(x or '.' for x in self.cells[r*3:r*3+3]) for r in range(3))+'\n  ABC\n```'

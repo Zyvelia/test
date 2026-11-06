@@ -22,6 +22,9 @@ five more games and customizable profiles](docs/TEAMS-PROFILES-TOURNAMENTS.md).
 Includes six starter backgrounds, reviewed uploads, cosmetic loadouts, a dashboard
 command palette, unsaved-change warnings and mobile navigation.
 
+The [Vivi Arcade design update](docs/GAME-DESIGN.md) adds illustrated boards, three
+color themes, private quick controls and text alternatives. [See the game preview](docs/assets/arcade-preview.png).
+
 ## What it does
 
 - Custom welcome cards, goodbye messages, safe newcomer roles, and rules acceptance.

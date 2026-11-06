@@ -7,48 +7,98 @@ import discord
 from discord import app_commands
 from .bot import reply
 from .features import enabled
-from .game_engines import ConnectFour, Checkers, Chess, Hangman, Sudoku, Memory, Battleship, WORD_BANK
+from .game_engines import ConnectFour, Checkers, Chess, Hangman, Sudoku, Memory, Battleship, TicTacToe, WORD_BANK
 
 from .more_games import Reversi,SAVED_TYPES
+from .game_design import THEMES,presentation,payload
 
 class MoveModal(discord.ui.Modal,title='Your move'):
     value=discord.ui.TextInput(label='Move or guess',max_length=80)
-    def __init__(self,hub,key): super().__init__(); self.hub=hub; self.key=key; self.game=hub.sessions.get(key)
+    def __init__(self,hub,key):
+        super().__init__(); self.hub=hub; self.key=key; self.game=hub.sessions.get(key)
+        examples={'chess':'e2e4 or Nf3','checkers':'b6-d4-f2','sudoku':'A1=5','crossword':'1A=CAT','minesweeper':'A1 or flag A1','word_search':'A1-E1','battleship':'A1','anagram':'Your unscrambled word','hangman':'A letter or the whole word'}
+        if self.game:self.value.placeholder=examples.get(self.game['kind'],'A coordinate or your answer')
     async def on_submit(self,i):
         if self.hub.sessions.get(self.key) is not self.game or i.guild_id!=self.key[0]: return await reply(i,'This game has ended. Use your current game’s controls.')
         await self.hub.move(i,str(self.value))
+
+class CoordinateView(discord.ui.View):
+    """Private row controls keep 6×6 boards usable within Discord's component limits."""
+    def __init__(self,hub,key,owner,row):
+        super().__init__(timeout=120);self.hub=hub;self.key=key;self.game=hub.sessions.get(key);self.owner=owner;self.mode='reveal'
+        if self.game['kind']=='minesweeper':
+            for label in ['Reveal','Flag','Unflag']:
+                button=discord.ui.Button(label=label,row=0,style=discord.ButtonStyle.primary if label=='Reveal' else discord.ButtonStyle.secondary)
+                async def choose_mode(i,value=label.lower()):
+                    if not await self.allowed(i):return
+                    self.mode=value
+                    for item in self.children:
+                        if item.row==0:item.style=discord.ButtonStyle.primary if item.label.lower()==value else discord.ButtonStyle.secondary
+                    await i.response.edit_message(content='Mode: '+value+'. Choose a square in this row.',view=self)
+                button.callback=choose_mode;self.add_item(button)
+        for col in range(6):
+            coordinate=f'{chr(65+col)}{row}';button=discord.ui.Button(label=coordinate,row=1+col//3)
+            async def choose_square(i,value=coordinate):
+                if not await self.allowed(i):return
+                move=(self.mode+' ' if self.game['kind']=='minesweeper' else '')+value
+                await self.hub.move(i,move)
+            button.callback=choose_square;self.add_item(button)
+    async def allowed(self,i):
+        if i.guild_id!=self.key[0] or i.user.id!=self.owner or self.hub.sessions.get(self.key) is not self.game:
+            await reply(i,'These controls belong to another player or an ended game.');return False
+        return True
 
 class GameView(discord.ui.View):
     def __init__(self,hub,key,invite=False):
         super().__init__(timeout=None); self.hub=hub; self.key=key; self.game=hub.sessions.get(key)
         for label in (['Accept','Decline'] if invite else ['Enter move','Private board','Resign']):
-            button=discord.ui.Button(label=label)
+            button=discord.ui.Button(label=label,style=discord.ButtonStyle.success if label=='Accept' else discord.ButtonStyle.danger if label in {'Decline','Resign'} else discord.ButtonStyle.primary if label=='Enter move' else discord.ButtonStyle.secondary)
             async def callback(i,action=label):
                 game=hub.sessions.get(key)
                 if not game or game is not self.game or i.user.id not in game['players']: return await reply(i,'This is not your active game.')
                 if not enabled(hub.store,i.guild_id,'games'): return await reply(i,'Games are disabled here.')
                 if action in {'Accept','Decline'}:
                     if i.user.id!=game['players'][1]: return await reply(i,'Only the challenged member can respond.')
-                    if action=='Decline': hub.sessions.pop(key,None); return await i.response.edit_message(content='Challenge declined.',view=None)
+                    if action=='Decline':
+                        hub.sessions.pop(key,None);game['end_status']='Challenge declined.';await i.response.defer();return await hub.finish(game)
                     game['accepted']=True; game['expires']=time.time()+1800
-                    return await i.response.edit_message(content=hub.public(game),view=GameView(hub,key))
+                    await i.response.defer()
+                    return await hub.update(game)
                 if action=='Enter move': return await i.response.send_modal(MoveModal(hub,key))
-                if action=='Private board': return await reply(i,hub.private(game,i.user.id))
+                if action=='Private board': return await hub.send_board(i,game)
                 await hub.resign(i)
             button.callback=callback; self.add_item(button)
         game=hub.sessions.get(key)
-        if game and not invite and game['kind'] in {'memory','connect_four'}:
-            moves=[str(n) for n in range(1,8)] if game['kind']=='connect_four' else [f'{chr(65+c)}{4-r}' for r in range(4) for c in range(4)]
+        if game and not invite and game['kind'] in {'memory','connect_four','tictactoe'}:
+            moves=[str(n) for n in range(1,8)] if game['kind']=='connect_four' else [f'{chr(65+c)}{3-r}' for r in range(3) for c in range(3)] if game['kind']=='tictactoe' else [f'{chr(65+c)}{4-r}' for r in range(4) for c in range(4)]
             for n,move in enumerate(moves):
                 engine=game['engine']; label=move
                 if game['kind']=='memory':
                     if n in engine.matched or n in engine.shown: label=move+' '+engine.cards[n]
-                button=discord.ui.Button(label=label,row=1+n//4,disabled=game['kind']=='memory' and (n in engine.matched or n in engine.shown))
+                if game['kind']=='tictactoe' and engine.cells[n]:label=move+' '+engine.cells[n]
+                disabled=(game['kind']=='memory' and (n in engine.matched or n in engine.shown)) or (game['kind']=='tictactoe' and bool(engine.cells[n])) or (game['kind']=='connect_four' and bool(engine.cells[0][n]))
+                button=discord.ui.Button(label=label,row=1+n//(3 if game['kind']=='tictactoe' else 4),disabled=disabled,style=discord.ButtonStyle.success if game['kind']=='memory' and n in engine.matched else discord.ButtonStyle.primary if game['kind']=='connect_four' else discord.ButtonStyle.secondary)
                 async def choose(i,value=move):
                     found=hub.find(i.guild_id,i.user.id)
                     if not found or found[0]!=key or found[1] is not self.game: return await reply(i,'This is not your active game.')
                     await hub.move(i,value)
                 button.callback=choose; self.add_item(button)
+        if game and not invite and game['kind'] in {'minesweeper','battleship'}:
+            menu=discord.ui.Select(placeholder='Quick move: choose a row',row=1,options=[discord.SelectOption(label=f'Row {n}',value=str(n)) for n in range(6,0,-1)])
+            async def choose_row(i):
+                current=hub.sessions.get(key)
+                if current is not self.game or i.user.id not in current['players']:return await reply(i,'This is not your active game.')
+                row=int(i.data['values'][0]);view=CoordinateView(hub,key,i.user.id,row)
+                await i.response.send_message('Choose a column. These private controls last two minutes.',view=view,ephemeral=True)
+            menu.callback=choose_row;self.add_item(menu)
+        if game and not invite and game['kind']=='reversi':
+            moves=[f'{chr(65+c)}{8-r}' for r,c in game['engine'].legal(game['engine'].turn)]
+            for start in range(0,len(moves),25):
+                menu=discord.ui.Select(placeholder='Choose a legal Reversi move',row=1+start//25,options=[discord.SelectOption(label=value,value=value) for value in moves[start:start+25]])
+                async def choose_legal(i):
+                    if hub.sessions.get(key) is not self.game or i.user.id not in self.game['players'] or i.guild_id!=key[0]:return await reply(i,'This is not your active game.')
+                    await hub.move(i,i.data['values'][0])
+                menu.callback=choose_legal;self.add_item(menu)
 
 class TournamentView(discord.ui.View):
     def __init__(self,hub,key):
@@ -64,11 +114,13 @@ class TournamentView(discord.ui.View):
                         if hub.find(i.guild_id,i.user.id): return await reply(i,'Finish your current game first.')
                         if len(game['players'])>=10: return await reply(i,'This tournament is full.')
                         game['players'].append(i.user.id); game['scores'][i.user.id]=0
-                    return await i.response.edit_message(content=hub.public(game),view=self)
+                    await i.response.defer()
+                    return await hub.update(game)
                 if action=='Start':
                     if i.user.id!=game['players'][0] or game['round']: return await reply(i,'Only the host can start this lobby.')
                     if len(game['players'])<2: return await reply(i,'At least two players must join.')
-                    hub.next_round(game); return await i.response.edit_message(content=hub.public(game),view=self)
+                    hub.next_round(game); await i.response.defer()
+                    return await hub.update(game)
                 if i.user.id not in game['players']: return await reply(i,'Join before the tournament starts.')
                 await i.response.send_modal(MoveModal(hub,key))
             button.callback=callback; self.add_item(button)
@@ -82,10 +134,12 @@ class GameHub:
         return engine.board(player)+'\n'+engine.help
     def public(self,g):
         if g['kind']=='anagram':
-            scores=' · '.join(f'<@{u}>: {g["scores"][u]}' for u in g['players'])
+            visible=g['scores'] if g.get('finished') else g.get('shown_scores',g['scores'])
+            scores=' · '.join(f'<@{u}>: {visible[u]}' for u in g['players'])
             if not g['round']: return 'Anagram tournament lobby. Join, then the host presses Start.\n'+scores
             return f'Anagram round {g["round"]}/{g["rounds"]}: **{g["scramble"]}** · <t:{int(g["deadline"])}:R>\n'+scores+('\n'+g.get('last',''))
         engine=g['engine']; board=engine.last if g['kind']=='battleship' else engine.board()
+        if not g.get('accepted',True):return f'<@{g["players"][1]}>, accept or decline this {g["kind"]} challenge within two minutes.\n'+engine.help
         return f'**{g["kind"].title()}** · '+(' vs '.join(f'<@{u}>' for u in g['players']))+'\n'+board+'\n'+(engine.result if engine.done else f'Turn: <@{g["players"][engine.turn]}>')+'\n'+engine.help
     async def start(self,i,kind,opponent=None,difficulty='easy',rounds=5):
         if not await self.service.need(i,'games'): return
@@ -94,10 +148,11 @@ class GameHub:
         if opponent and (opponent.bot or opponent.id==i.user.id or self.find(i.guild_id,opponent.id)): return await reply(i,'Choose another available human member.')
         await i.response.defer()
         key=(i.guild_id,i.user.id)
-        game=dict(kind=kind,players=[i.user.id]+([opponent.id] if opponent else []),accepted=not opponent,expires=time.time()+(120 if opponent else 1800))
+        theme=self.store.profile(i.guild_id,i.user.id).get('game_theme','velvet')
+        game=dict(theme=theme if theme in THEMES else 'velvet',ready=False,kind=kind,players=[i.user.id]+([opponent.id] if opponent else []),accepted=not opponent,expires=time.time()+(120 if opponent else 1800))
         if kind=='anagram': game.update(round=0,rounds=rounds,scores={i.user.id:0},words=random.sample(WORD_BANK,rounds),last='')
         else:
-            factories={'connect_four':ConnectFour,'checkers':Checkers,'chess':Chess,'hangman':Hangman,'sudoku':lambda:Sudoku(difficulty),'memory':Memory,'battleship':Battleship,'reversi':Reversi,**SAVED_TYPES}
+            factories={'tictactoe':TicTacToe,'connect_four':ConnectFour,'checkers':Checkers,'chess':Chess,'hangman':Hangman,'sudoku':lambda:Sudoku(difficulty),'memory':Memory,'battleship':Battleship,'reversi':Reversi,**SAVED_TYPES}
             if kind=='minesweeper':factories[kind]=lambda:SAVED_TYPES[kind](difficulty)
             saved=self.store.record(f'puzzle:{i.guild_id}:{i.user.id}:{kind}') if kind in SAVED_TYPES else None
             game['engine']=SAVED_TYPES[kind].load(saved['data']['state']) if saved else await asyncio.to_thread(factories[kind])
@@ -108,8 +163,39 @@ class GameHub:
         self.sessions[key]=game
         self.save_puzzle(game)
         view=TournamentView(self,key) if kind=='anagram' else GameView(self,key,bool(opponent))
-        try: game['message']=await i.followup.send(f'<@{opponent.id}>, accept this {kind} challenge within two minutes.' if opponent else self.public(game),view=view,wait=True,allowed_mentions=discord.AllowedMentions.none())
-        except Exception: self.sessions.pop(key,None); raise
+        try:
+            options=await self.card(game)
+            if self.sessions.get(key) is not game:
+                if options.get('file'):options['file'].close()
+                return await reply(i,'Game opening cancelled.')
+            try:game['message']=await i.followup.send(view=view,wait=True,allowed_mentions=discord.AllowedMentions.none(),**options)
+            except discord.HTTPException:
+                game['text_only']=True
+                game['message']=await i.followup.send(self.public(game),view=view,wait=True,allowed_mentions=discord.AllowedMentions.none())
+            game['ready']=True
+            if self.sessions.get(key) is not game:
+                game.setdefault('end_status','Game opening cancelled.');await self.finish(game)
+        except Exception:
+            if self.sessions.get(key) is game:self.sessions.pop(key,None)
+            raise
+
+    async def card(self,g,viewer=None):
+        if g.get('text_only'):return dict(content=self.private(g,viewer) if viewer is not None else self.public(g))
+        try:return await payload(presentation(g,viewer),g['players'])
+        except OSError as error:
+            self.service.productivity.error('arcade rendering',error);g['text_only']=True
+            return dict(content=self.private(g,viewer) if viewer is not None else self.public(g))
+
+    async def send_board(self,i,g,format='image'):
+        if i.user.id not in g['players']:return await reply(i,'This is not your game.')
+        if format=='text':return await reply(i,self.private(g,i.user.id))
+        await i.response.defer(ephemeral=True)
+        data=presentation(g,i.user.id)
+        theme=self.store.profile(i.guild_id,i.user.id).get('game_theme',g.get('theme','velvet'))
+        data['theme']=theme if theme in THEMES else 'velvet'
+        try:await i.followup.send(ephemeral=True,allowed_mentions=discord.AllowedMentions.none(),**await payload(data,g['players']))
+        except (discord.HTTPException,OSError):await reply(i,self.private(g,i.user.id))
+
     def save_puzzle(self,g):
         if g['kind'] not in SAVED_TYPES:return
         ident=f'puzzle:{g["key"][0]}:{g["players"][0]}:{g["kind"]}'
@@ -117,6 +203,7 @@ class GameHub:
         else:self.store.put_record(g['key'][0],'puzzle_progress',dict(user=g['players'][0],kind=g['kind'],state=g['engine'].dump(),saved=time.time()),ident)
 
     def next_round(self,g):
+        g['shown_scores']=dict(g['scores'])
         g['round']+=1; g['word']=g['words'][g['round']-1]; chars=list(g['word'])
         for _ in range(10):
             random.shuffle(chars)
@@ -127,6 +214,7 @@ class GameHub:
         found=self.find(i.guild_id,i.user.id)
         if not found: return await reply(i,'You have no active game.')
         key,g=found
+        if not g.get('ready',True):return await reply(i,'Your game is opening. Try again in a moment.')
         if not g['accepted']: return await reply(i,'Wait for the opponent to accept.')
         if g['kind']=='anagram':
             if not g['round'] or time.time()>=g['deadline']: return await reply(i,'Wait for the next round.')
@@ -142,9 +230,13 @@ class GameHub:
         except ValueError as error: return await reply(i,str(error))
         g['expires']=time.time()+1800
         self.save_puzzle(g)
+        if g['kind']=='tictactoe' and engine.done and engine.result!='Draw!':self.service.reward(i.guild_id,i.user.id,0,'Tic-tac-toe winner')
         await i.response.defer(ephemeral=True)
         await self.update(g)
-        await reply(i,self.private(g,i.user.id) if g['kind']=='battleship' else 'Move recorded.')
+        if g['kind']=='battleship' and not g.get('text_only'):
+            try:await i.followup.send(ephemeral=True,allowed_mentions=discord.AllowedMentions.none(),**await self.card(g,i.user.id))
+            except discord.HTTPException:await reply(i,self.private(g,i.user.id))
+        else:await reply(i,self.private(g,i.user.id) if g['kind']=='battleship' else 'Move recorded.')
         if engine.done:
             if self.sessions.get(key) is g:self.sessions.pop(key,None)
         elif isinstance(engine,Memory) and len(engine.shown)==2: g['hide_at']=time.time()+2
@@ -153,20 +245,39 @@ class GameHub:
         if not found: return await reply(i,'You have no active game.')
         key,g=found; self.sessions.pop(key,None)
         await i.response.defer(ephemeral=True)
-        with contextlib.suppress(discord.HTTPException): await g['message'].edit(content=f'Game ended: <@{i.user.id}> resigned.',view=None,allowed_mentions=discord.AllowedMentions.none())
+        g['end_status']=f'Player {g["players"].index(i.user.id)+1} resigned.'
+        await self.finish(g)
         await reply(i,'Game ended.')
-    async def update(self,g):
-        if self.sessions.get(g['key']) is not g:return
-        with contextlib.suppress(discord.HTTPException):
-            done=g.get('engine') and g['engine'].done
-            await g['message'].edit(content=self.public(g),view=None if done else (TournamentView(self,g['key']) if g['kind']=='anagram' else GameView(self,g['key'])),allowed_mentions=discord.AllowedMentions.none())
+    async def finish(self,g):
+        await self.update(g,final=True)
+
+    async def update(self,g,final=False):
+        if not g.get('ready',True):return
+        if not final and self.sessions.get(g['key']) is not g:return
+        async with g.setdefault('_render_lock',asyncio.Lock()):
+            if not final and self.sessions.get(g['key']) is not g:return
+            options=await self.card(g)
+            if not final and self.sessions.get(g['key']) is not g:
+                if options.get('file'):options['file'].close()
+                return
+            done=final or g.get('finished') or (g.get('engine') and g['engine'].done)
+            view=None if done else TournamentView(self,g['key']) if g['kind']=='anagram' else GameView(self,g['key'])
+            try:
+                if 'file' in options:
+                    file=options.pop('file');await g['message'].edit(content=None,attachments=[file],view=view,allowed_mentions=discord.AllowedMentions.none(),**options)
+                else:await g['message'].edit(embed=None,attachments=[],view=view,allowed_mentions=discord.AllowedMentions.none(),**options)
+            except discord.HTTPException:
+                g['text_only']=True
+                with contextlib.suppress(discord.HTTPException):await g['message'].edit(content=g.get('end_status') or self.public(g),embed=None,attachments=[],view=view,allowed_mentions=discord.AllowedMentions.none())
+
     async def tick(self):
         now=time.time()
         for key,g in list(self.sessions.items()):
             if self.sessions.get(key) is not g:continue
             if g['expires']<now or not enabled(self.store,key[0],'games'):
                 self.sessions.pop(key,None)
-                with contextlib.suppress(discord.HTTPException): await g['message'].edit(content='Game ended (timeout or games disabled).',view=None)
+                g['end_status']='Game ended: timeout or games disabled.'
+                await self.finish(g)
                 continue
             if g.get('hide_at',now+1)<=now:
                 g.pop('hide_at'); g['engine'].shown=[]; await self.update(g)
@@ -174,7 +285,7 @@ class GameHub:
                 g['last']='Previous answer: '+g['word']
                 if g['round']>=g['rounds']:
                     self.sessions.pop(key,None)
-                    with contextlib.suppress(discord.HTTPException): await g['message'].edit(content='Tournament finished!\n'+g['last']+'\n'+'\n'.join(f'<@{u}>: {score}' for u,score in sorted(g['scores'].items(),key=lambda x:x[1],reverse=True)),view=None,allowed_mentions=discord.AllowedMentions.none())
+                    g['finished']=True;await self.finish(g)
                 else: self.next_round(g); await self.update(g)
     async def run(self):
         await self.bot.wait_until_ready()
@@ -211,9 +322,11 @@ def register_games(bot):
     @group.command(name='move',description='Make a move or submit a private tournament guess.')
     async def move(i:discord.Interaction,notation:str): await hub.move(i,notation)
     @group.command(name='board',description='Show your current board privately, including your Battleship fleet.')
-    async def board(i:discord.Interaction):
+    @app_commands.choices(format=[app_commands.Choice(name='Image card',value='image'),app_commands.Choice(name='Text / screen reader',value='text')])
+    async def board(i:discord.Interaction,format:str='image'):
         found=hub.find(i.guild_id,i.user.id)
-        await reply(i,hub.private(found[1],i.user.id) if found else 'No active game.')
+        if not found:return await reply(i,'No active game.')
+        await hub.send_board(i,found[1],format)
     @group.command(name='resign',description='End your active game or tournament.')
     async def resign(i:discord.Interaction): await hub.resign(i)
 
@@ -238,3 +351,12 @@ def register_games(bot):
     async def puzzle_reset(i:discord.Interaction,kind:str):
         if hub.find(i.guild_id,i.user.id):return await reply(i,'Resign from your active game first.')
         hub.store.delete_record(f'puzzle:{i.guild_id}:{i.user.id}:{kind}');await reply(i,'Saved puzzle reset.')
+
+    @group.command(name='theme',description='Choose your arcade colors; hosts also update their active public game.')
+    @app_commands.choices(theme=[app_commands.Choice(name=x.title(),value=x) for x in THEMES])
+    async def theme(i:discord.Interaction,theme:str):
+        profile=hub.store.profile(i.guild_id,i.user.id);profile['game_theme']=theme;hub.store.save_profile(i.guild_id,i.user.id,profile)
+        found=hub.find(i.guild_id,i.user.id)
+        if found and found[1]['players'][0]==i.user.id:
+            found[1]['theme']=theme;await i.response.defer(ephemeral=True);await hub.update(found[1])
+        await reply(i,'Arcade theme saved: '+theme.title()+'.')

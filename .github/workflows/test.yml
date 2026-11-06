@@ -50,6 +50,18 @@ jobs:
           puzzle.move(clue + '=' + answer)
           assert Crossword.load(json.loads(json.dumps(puzzle.dump()))).answers == puzzle.answers
           PY
+      - name: Check arcade cards and hidden-board privacy
+        run: |
+          docker run --rm -i --network none vivi:ci python - <<'PY'
+          from vivi.game_design import presentation, render
+          from vivi.game_engines import Battleship, Chess
+          game = dict(kind='battleship', engine=Battleship(), players=[1, 2], accepted=True)
+          public = presentation(game)
+          assert 'own' not in public and 'target' not in public
+          assert render(public).startswith(bytes.fromhex('89504e47'))
+          assert presentation(game, 1)['private'] is True
+          assert render(presentation(dict(kind='chess', engine=Chess(), players=[1, 2]))).startswith(bytes.fromhex('89504e47'))
+          PY
       - name: Check encrypted recovery inside the image
         run: |
           docker run --rm -i --network none vivi:ci python - <<'PY'

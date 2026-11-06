@@ -165,10 +165,13 @@ class DeleteView(discord.ui.View):
 class GameView(discord.ui.View):
     def __init__(self, service, first, second=None, trivia=None):
         super().__init__(timeout=180); self.service=service; self.players=[first,second] if second else [first]
-        self.trivia=trivia; self.board=['']*9; self.turn=0; self.done=False; self.message=None
-        labels=trivia[1] if trivia else ['·']*9
+        self.trivia=trivia; self.board=['']*9; self.turn=0; self.done=False; self.message=None;self.text_only=False
+        from .game_design import THEMES
+        theme='velvet'
+        self.theme=theme if theme in THEMES else 'velvet'
+        labels=[f'{chr(65+n)} · {answer}'[:80] for n,answer in enumerate(trivia[1])] if trivia else ['·']*9
         for n,label in enumerate(labels):
-            button=discord.ui.Button(label=label,style=discord.ButtonStyle.secondary,row=n//3)
+            button=discord.ui.Button(label=label,style=discord.ButtonStyle.primary if trivia else discord.ButtonStyle.secondary,row=n//2 if trivia else n//3)
             async def callback(i, pos=n): await self.play(i,pos)
             button.callback=callback; self.add_item(button)
 
@@ -177,11 +180,12 @@ class GameView(discord.ui.View):
         if self.done: return await reply(i,'This game has ended.')
         if self.trivia:
             if i.user.id!=self.players[0]: return await reply(i,'Start your own game with /games trivia.')
-            self.done=True
+            self.done=True;self.selected=pos;self.stop()
             won=pos==self.trivia[2]
             if won: self.service.reward(i.guild_id,i.user.id,10,'Trivia winner')
-            for child in self.children: child.disabled=True
-            return await i.response.edit_message(content=('Correct! +10 coins.' if won else f'Answer: {self.trivia[1][self.trivia[2]]}'),view=self)
+            for n,child in enumerate(self.children):
+                child.disabled=True;child.style=discord.ButtonStyle.success if n==self.trivia[2] else discord.ButtonStyle.danger if n==pos else discord.ButtonStyle.secondary
+            return await self.edit(i,'Correct! +10 coins if economy is enabled.' if won else f'Answer: {self.trivia[1][self.trivia[2]]}')
         if i.user.id!=self.players[self.turn]: return await reply(i,'It is not your turn.')
         if self.board[pos]: return await reply(i,'That square is occupied.')
         self.board[pos]='X' if self.turn==0 else 'O'; self.children[pos].label=self.board[pos]
@@ -193,13 +197,26 @@ class GameView(discord.ui.View):
             text='Draw!' if result=='draw' else f'{i.user.display_name} wins!'
         else:
             self.turn=1-self.turn; text=f'Tic-tac-toe · turn: <@{self.players[self.turn]}> (X starts)'
-        await i.response.edit_message(content=text,view=self)
+        await self.edit(i,text)
+
+    async def edit(self,i,text):
+        if not self.text_only:
+            from .game_design import legacy_presentation,payload
+            try:
+                options=await payload(legacy_presentation(self,text),self.players);file=options.pop('file')
+                return await i.response.edit_message(content=text,attachments=[file],view=self,**options)
+            except (discord.HTTPException,OSError):self.text_only=True
+        await i.response.edit_message(content=text,embed=None,attachments=[],view=self)
 
     async def on_timeout(self):
+        if self.done:return
         self.done=True
         for child in self.children: child.disabled=True
         if self.message:
-            with contextlib.suppress(discord.HTTPException): await self.message.edit(content='Game timed out. Start a new one with /games.',view=self)
+            from .game_design import legacy_presentation,payload
+            with contextlib.suppress(discord.HTTPException,OSError):
+                options=await payload(legacy_presentation(self,'Time is up. Start a new game.'),self.players);file=options.pop('file')
+                await self.message.edit(content='Game timed out. Start a new one with /games.',attachments=[file],view=self,**options)
 
 
 class Community:
@@ -862,7 +879,11 @@ def register_extra(bot):
     async def trivia(i:discord.Interaction):
         if not await service.need(i,'games'): return
         question=secrets.choice(TRIVIA); view=GameView(service,i.user.id,trivia=question)
-        await i.response.send_message(question[0],view=view)
+        from .game_design import THEMES,legacy_presentation,payload
+        theme=store.profile(i.guild_id,i.user.id).get('game_theme','velvet');view.theme=theme if theme in THEMES else 'velvet'
+        try:await i.response.send_message(view=view,**await payload(legacy_presentation(view),view.players))
+        except (discord.HTTPException,OSError):
+            view.text_only=True;await i.response.send_message(question[0],view=view)
         view.message=await i.original_response()
 
     @games.command(name='word',description='Start a scrambled-word challenge; use /games guess to answer.')
@@ -874,7 +895,13 @@ def register_extra(bot):
         if ''.join(letters)==answer: letters=letters[1:]+letters[:1]
         p=store.profile(i.guild_id,i.user.id); p.update(word=answer,word_until=timestamp()+120,word_attempts=0)
         store.save_profile(i.guild_id,i.user.id,p)
-        await reply(i,f'Unscramble **{" ".join(letters)}**. Use /games guess within two minutes. You get five attempts.')
+        from .game_design import payload
+        data=dict(kind='anagram',title='Word Scramble',round=1,rounds=1,letters=''.join(letters),scores=[],previous='',done=False,turn=0,theme=store.profile(i.guild_id,i.user.id).get('game_theme','velvet'),help='Use /games guess within two minutes. You get five attempts.')
+        try:
+            options=await payload(data);options['embed'].set_footer(text='Answer with /games guess · Five attempts · Two minutes')
+            options['file'].description='Word scramble: '+', '.join(letters)+'. Answer with /games guess.'
+            await i.response.send_message(ephemeral=True,**options)
+        except (discord.HTTPException,OSError):await reply(i,f'Unscramble **{" ".join(letters)}**. Use /games guess within two minutes. You get five attempts.')
 
     @games.command(name='guess',description='Submit an answer to your current scrambled-word challenge.')
     async def guess(i:discord.Interaction,answer:str):
@@ -891,11 +918,7 @@ def register_extra(bot):
     @games.command(name='tictactoe',description='Play turn-based tic-tac-toe against another server member.')
     @app_commands.checks.cooldown(1,30,key=lambda i:(i.guild_id,i.user.id))
     async def tictactoe(i:discord.Interaction,opponent:discord.Member):
-        if not await service.need(i,'games'): return
-        if opponent.bot or opponent.id==i.user.id: return await reply(i,'Choose another human member.')
-        view=GameView(service,i.user.id,opponent.id)
-        await i.response.send_message(f'Tic-tac-toe: {i.user.display_name} (X) vs {opponent.display_name} (O). X starts.',view=view)
-        view.message=await i.original_response()
+        await service.games.start(i,'tictactoe',opponent)
 
     @economy.command(name='profile',description='Show levels, currency, achievements, and your cosmetic profile title.')
     async def profile(i:discord.Interaction,member:discord.Member=None):

@@ -262,3 +262,6 @@ favorites, eight additional games, Steam news and visual dashboard editors.
 See the [teams, tournaments and profiles guide](TEAMS-PROFILES-TOURNAMENTS.md)
 for invite-source estimates, team recruitment, game libraries, five more games,
 profile cosmetics/privacy and dashboard navigation improvements.
+
+The [arcade design guide](GAME-DESIGN.md) covers illustrated game cards, themes,
+private quick controls, text boards and recommended next improvements.
