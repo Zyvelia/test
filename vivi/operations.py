@@ -19,14 +19,15 @@ from .policy import may_moderate
 LOG=logging.getLogger('vivi.operations')
 
 
-def subscription(provider,source,channel):
+def subscription(provider,source,channel,filters=None):
     source=source.strip()
-    patterns={'twitch':r'[A-Za-z0-9_]{1,25}', 'youtube':r'UC[A-Za-z0-9_-]{22}',
+    patterns={'webhook':r'[A-Za-z0-9_-]{1,64}', 'twitch':r'[A-Za-z0-9_]{1,25}', 'youtube':r'UC[A-Za-z0-9_-]{22}',
               'github_releases':r'[A-Za-z0-9_-]{1,39}/[A-Za-z0-9_.-]{1,100}',
               'github_commits':r'[A-Za-z0-9_-]{1,39}/[A-Za-z0-9_.-]{1,100}'}
     if provider not in patterns or not re.fullmatch(patterns[provider],source) or source.split('/')[-1] in {'.','..'}:
         raise ValueError('Use a Twitch login, YouTube UC channel ID, or GitHub owner/repository (no URLs).')
-    return dict(provider=provider,source=source,channel=channel,initialized=False,last=None,next_poll=0)
+    from .customization import filters_for
+    return dict(provider=provider,source=source,channel=channel,filters=filters_for(provider,filters),initialized=False,last=None,next_poll=0)
 
 
 class TicketCategoryView(discord.ui.View):
@@ -135,12 +136,14 @@ class Operations:
             if os.getenv('NOTIFY_GITHUB_TOKEN') and source.lower() in [str(x).lower() for x in allowed]:
                 headers['Authorization']='Bearer '+os.environ['NOTIFY_GITHUB_TOKEN']
             path='releases?per_page=5' if provider=='github_releases' else 'commits?per_page=5'
+            from urllib.parse import urlencode
+            if provider=='github_commits' and data.get('filters',{}).get('branch'): path+='&'+urlencode({'sha':data['filters']['branch']})
             async with session.get(f'https://api.github.com/repos/{source}/{path}',headers=headers,allow_redirects=False) as response:
                 if response.status!=200: raise ValueError(f'GitHub returned HTTP {response.status}; check source, credentials or API limits.')
                 rows=await response.json()
             if provider=='github_releases':
-                return [dict(id=str(x['id']),title=x.get('name') or x['tag_name'],url=x['html_url']) for x in rows if not x.get('draft')]
-            return [dict(id=x['sha'],title=x['commit']['message'].split('\n')[0],url=x['html_url']) for x in rows]
+                return [dict(id=str(x['id']),title=x.get('name') or x['tag_name'],url=x['html_url'],tag=x['tag_name'],category='prerelease' if x.get('prerelease') else 'release') for x in rows if not x.get('draft')]
+            return [dict(id=x['sha'],title=x['commit']['message'].split('\n')[0],url=x['html_url'],branch=data.get('filters',{}).get('branch','')) for x in rows]
         if provider=='youtube':
             async with session.get('https://www.youtube.com/feeds/videos.xml',params={'channel_id':source},allow_redirects=False) as response:
                 if response.status!=200: raise ValueError(f'YouTube returned HTTP {response.status}. Check the UC channel ID.')
@@ -163,12 +166,13 @@ class Operations:
                 if response.status==401: self.twitch_expiry=0
                 if response.status!=200: raise ValueError(f'Twitch returned HTTP {response.status}.')
                 body=await response.json()
-            return [dict(id=x['id'],title=x['title'],url='https://www.twitch.tv/'+source) for x in body['data']]
+            return [dict(id=x['id'],title=x['title'],url='https://www.twitch.tv/'+source,category=x.get('game_name','')) for x in body['data']]
         raise ValueError('Unsupported provider.')
 
     async def poll_notifications(self):
         for record in self.store.records(kind='notification'):
             guild=self.bot.get_guild(record['guild']); data=record['data']
+            if data['provider']=='webhook': continue
             if not guild or not enabled(self.store,guild.id,'notifications') or data.get('next_poll',0)>time.time(): continue
             try:
                 events=await self.events(data,guild.id)
@@ -182,6 +186,8 @@ class Operations:
                     channel=guild.get_channel(data['channel'])
                     if not channel: raise ValueError('Notification destination is missing.')
                     for event in reversed(fresh):
+                        from .customization import accepts
+                        if not accepts(data,event): continue
                         if not self.store.record(record['id']) or not enabled(self.store,guild.id,'notifications'): complete=False; break
                         await channel.send(f'**{data["provider"]}: {data["source"]}**\n{event["title"][:300]}\n{event["url"]}',
                                            allowed_mentions=discord.AllowedMentions.none())
@@ -258,7 +264,7 @@ def register_operations(bot):
 
     @notify.command(name='add',description='Watch a Twitch login, YouTube UC channel ID, or GitHub owner/repository.')
     @app_commands.check(admin)
-    @app_commands.choices(provider=[app_commands.Choice(name=x,value=x) for x in ['twitch','youtube','github_releases','github_commits']])
+    @app_commands.choices(provider=[app_commands.Choice(name=x,value=x) for x in ['twitch','youtube','github_releases','github_commits','webhook']])
     async def add(i:discord.Interaction,provider:str,source:str,channel:discord.TextChannel):
         if not await service.need(i,'notifications'): return
         if len(store.records(i.guild_id,'notification'))>=20: return await reply(i,'Maximum 20 subscriptions per server.')

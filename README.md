@@ -9,6 +9,10 @@ health, languages and aliases](docs/PRODUCTIVITY.md), plus [Docker deployment](d
 New AFK/backup/alias features start off. Rerun setup after updating; tray.bat opens
 Windows controls, while Docker is an alternative deployment method.
 
+Also available: [per-channel XP, themes/branding, signed incoming hooks,
+notification filters and encrypted full-data backups](docs/ADVANCED.md).
+Instant hooks require your own HTTPS endpoint; encrypted full-data backups are host-only.
+
 ## What it does
 
 - Custom welcome cards, goodbye messages, safe newcomer roles, and rules acceptance.
@@ -200,3 +204,5 @@ Actual Discord bot/OAuth login, live channel permissions, external providers,
 voice delivery and Windows startup still need testing on your own server/PC.
 Linux setup, local audio decoding and dashboard HTTP behavior are tested here;
 actual service activation depends on your host’s systemd user session. No bot token is included.
+
+More planning ideas: [250 additional feature ideas](docs/IDEAS-250.md) (wishlist only).

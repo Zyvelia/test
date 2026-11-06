@@ -13,7 +13,7 @@ FEATURES = {
     'spotlight': False, 'games': False, 'daily_questions': False, 'xp': False,
     'economy': False, 'translation': False, 'ai': False,
     'music': False, 'voice_rooms': False, 'notifications': False, 'ticket_tools': False,
-    'afk': False, 'scheduled_backups': False, 'custom_aliases': False,
+    'instant_webhooks': False, 'afk': False, 'scheduled_backups': False, 'custom_aliases': False,
     'raid_protection': False, 'mention_protection': False, 'warning_thresholds': False,
 }
 OPTION_TYPES = {
@@ -26,7 +26,7 @@ OPTION_TYPES = {
     'raid_channel': int, 'raid_lock_minutes': int, 'warning_count': int,
     'warning_timeout_minutes': int, 'warning_window_days': int,
     'ticket_categories': dict, 'voice_lobby': int, 'voice_category': int,
-    'voice_user_limit': int, 'language': str, 'backup_hours': int, 'backup_keep': int, 'aliases': dict,
+    'voice_user_limit': int, 'language': str, 'backup_hours': int, 'backup_keep': int, 'aliases': dict, 'xp_channels': dict, 'branding': dict,
 }
 TRIVIA = [
     ('Which planet is the largest?', ['Jupiter','Earth','Mars','Venus'],0),
@@ -67,6 +67,12 @@ def validate_option(key, value):
         return
     if key not in OPTION_TYPES or type(value) is not OPTION_TYPES[key]: raise ValueError('Unknown setting or invalid type.')
     if isinstance(value,str) and len(value)>1800: raise ValueError('Setting is too long.')
+    if key=='xp_channels':
+        from .customization import validate_xp
+        validate_xp(value)
+    if key=='branding':
+        from .customization import validate_brand
+        validate_brand(value)
     if key=='language' and value not in {'en','es','fr'}: raise ValueError('Supported languages: en, es, fr.')
     if key=='aliases':
         from .productivity import validate_aliases
@@ -106,8 +112,8 @@ def validate_backup(guild, backup):
     if not isinstance(subscriptions,list) or len(subscriptions)>20: raise ValueError('Invalid subscriptions.')
     from .operations import subscription
     for item in subscriptions:
-        if not isinstance(item,dict) or set(item)!={'provider','source','channel'} or not isinstance(item['provider'],str) or not isinstance(item['source'],str) or type(item['channel']) is not int or item['channel']<=0: raise ValueError('Invalid subscription.')
-        subscription(item['provider'],item['source'],item['channel'])
+        if not isinstance(item,dict) or set(item) not in [{'provider','source','channel'},{'provider','source','channel','filters'}] or not isinstance(item['provider'],str) or not isinstance(item['source'],str) or type(item['channel']) is not int or item['channel']<=0: raise ValueError('Invalid subscription.')
+        subscription(item['provider'],item['source'],item['channel'],item.get('filters'))
     roles=backup['roles']
     if not isinstance(roles,list) or len(roles)>100 or any(type(x) is not int or x<=0 for x in roles): raise ValueError('Invalid roles.')
     s=backup['settings']
@@ -134,10 +140,14 @@ def suspicious_link(text, blocked):
 def blocked_word(text, words):
     return any(re.search(r'(?<!\w)'+re.escape(w)+r'(?!\w)',text,re.I) for w in words)
 
-def award_activity(profile, content, now):
+def award_activity(profile, content, now, amount=10, cooldown=60, channel=None):
     digest=hashlib.sha256(content.strip().casefold().encode()).hexdigest()
-    if len(content.strip())<5 or now-profile['last_xp']<60 or digest==profile['last_hash']: return False
-    profile['last_xp']=now; profile['last_hash']=digest; profile['xp']+=10; profile['coins']+=2
+    last_channel=profile.get('last_xp_channels',{}).get(str(channel),0) if channel is not None else profile['last_xp']
+    if amount<=0 or len(content.strip())<5 or (profile['last_xp']>0 and now-profile['last_xp']<min(cooldown,60)) or (last_channel>0 and now-last_channel<cooldown) or digest==profile['last_hash']: return False
+    profile['last_xp']=now; profile['last_hash']=digest; profile['xp']+=amount; profile['coins']+=2
+    if channel is not None:
+        history=profile.setdefault('last_xp_channels',{});history[str(channel)]=now
+        if len(history)>50: del history[min(history,key=history.get)]
     unlock(profile,'First words')
     if profile['xp']>=500: unlock(profile,'Level five')
     return True

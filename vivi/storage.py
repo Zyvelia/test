@@ -162,7 +162,7 @@ class Store:
                 'options':{r['key']:json.loads(r['value']) for r in
                            self.db.execute("SELECT key,value FROM options WHERE guild=? AND key NOT LIKE 'internal_%'",(guild,))},
                 'roles':[r['role'] for r in self.db.execute('SELECT role FROM roles WHERE guild=?',(guild,))],
-                'subscriptions':[{k:r['data'][k] for k in ['provider','source','channel']} for r in self.records(guild,'notification')]}
+                'subscriptions':[dict({k:r['data'][k] for k in ['provider','source','channel']},filters=r['data'].get('filters',{})) for r in self.records(guild,'notification')]}
 
     def restore_config(self, guild, backup):
         # Validation happens before the transaction; personal data and records are never restored.
@@ -180,7 +180,7 @@ class Store:
             self.db.execute("DELETE FROM records WHERE guild=? AND kind='notification'",(guild,))
             from .operations import subscription
             for item in backup.get('subscriptions',[]):
-                data=subscription(item['provider'],item['source'],item['channel'])
+                data=subscription(item['provider'],item['source'],item['channel'],item.get('filters'))
                 self.db.execute('INSERT INTO records VALUES (?,?,?,?)',(secrets.token_hex(8),guild,'notification',json.dumps(data)))
             s=backup['settings']
             if s:

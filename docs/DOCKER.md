@@ -70,3 +70,14 @@ The bundle is mounted only for package installation, with verification enabled;
 it is not copied into the final image. Runtime proxy trust, if needed on your host,
 should likewise use a read-only CA mount and supported SSL_CERT_FILE configuration.
 Do not put proxy credentials into the Dockerfile or disable TLS verification.
+
+The optional webhook receiver uses a separate port, 8766, also published only on
+host loopback. Expose only its /hooks/ route through your own HTTPS reverse proxy.
+For full-data encryption in Docker, mount your key read-only **outside /app** (for
+example /run/vivi-key) and set BACKUP_KEY_FILE to that path. Do not bake keys into
+the image. See [ADVANCED.md](ADVANCED.md).
+
+Generate backup keys on the host and mount them read-only; a key generated only
+in a container’s writable layer will be lost when that container is replaced.
+Restore into a writable separate directory (for example /tmp/restored-vivi),
+then copy/inspect that data before removing the container.

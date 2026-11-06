@@ -36,3 +36,20 @@ jobs:
       - name: Check container imports and private runtime directory
         run: |
           docker run --rm --network none vivi:ci python -c "import os; from pathlib import Path; from vivi.storage import Store; from vivi.community import card_bytes; assert os.getuid() == 10001; assert not Path('/app/.env').exists(); s=Store('/app/data/ci.sqlite3'); s.set_option(1,'language','es'); assert s.history(1); assert card_bytes('Member','Server','Preview','#87CEEB').startswith(bytes.fromhex('89504e47')); s.close()"
+      - name: Check encrypted recovery inside the image
+        run: |
+          docker run --rm -i --network none vivi:ci python - <<'PY'
+          import tempfile
+          from pathlib import Path
+          from vivi.storage import Store
+          from vivi.backup import generate_key, create, restore
+          with tempfile.TemporaryDirectory() as temporary:
+              temporary = Path(temporary)
+              store = Store('/app/data/recovery.sqlite3')
+              store.warn(1, 2, 3, 'Recovery test')
+              key = generate_key(temporary / 'private.key')
+              archive = create('/app', store.path, key)
+              restored = restore(archive, key, temporary / 'restored', '/app')
+              assert (restored / 'data/recovery.sqlite3').exists()
+              store.close()
+          PY

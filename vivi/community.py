@@ -39,7 +39,7 @@ def safe_role(guild, store, role):
 
 def color(value): return int(value.lstrip('#'),16)
 
-def card_bytes(name, server, text, accent, avatar=None, greeting=None):
+def card_bytes(name, server, text, accent, avatar=None, greeting=None, brand=None):
     image=Image.new('RGB',(900,260),(18,24,38)); d=ImageDraw.Draw(image)
     d.rounded_rectangle((5,5,894,254),radius=22,outline=accent,width=4)
     font=ImageFont.load_default(size=26); small=ImageFont.load_default(size=18)
@@ -53,6 +53,7 @@ def card_bytes(name, server, text, accent, avatar=None, greeting=None):
     # Wrap on character boundaries as a fallback for long unbroken text.
     lines=[text[x:x+48] for x in range(0,min(len(text),144),48)]
     d.multiline_text((220,130),'\n'.join(lines),font=small,fill=(200,210,230),spacing=7)
+    if brand: d.text((20,232),brand[:90],font=ImageFont.load_default(size=12),fill=(170,180,200))
     out=io.BytesIO(); image.save(out,format='PNG'); return out.getvalue()
 
 
@@ -194,6 +195,8 @@ class Community:
         self.operations=Operations(self); self.voice=VoiceTools(self)
         from .productivity import Productivity
         self.productivity=Productivity(self)
+        from .webhooks import Webhooks
+        self.webhooks=Webhooks(self)
         self.bot.add_listener(self.on_message,'on_message')
         self.bot.add_listener(self.on_message_edit,'on_message_edit')
         self.bot.add_listener(self.on_member_remove,'on_member_remove')
@@ -213,10 +216,15 @@ class Community:
                 await self.dashboard.start()
             except Exception:
                 LOG.error('Dashboard could not start. Check OAuth settings and whether its local port is in use.')
+        try: await self.webhooks.start()
+        except Exception as error:
+            self.productivity.error('webhook startup',error)
+            LOG.error('Webhook listener not started; check its signing secret, bind and port.')
         self.task=asyncio.create_task(self.scheduler(),name='vivi-scheduler')
         self.notification_task=asyncio.create_task(self.notification_scheduler(),name='vivi-notifications')
 
     async def close(self):
+        await self.webhooks.close()
         if self.notification_task:
             self.notification_task.cancel()
             with contextlib.suppress(asyncio.CancelledError): await self.notification_task
@@ -286,7 +294,7 @@ class Community:
             if enabled(self.store,guild.id,'welcome_cards'):
                 avatar=await member.display_avatar.with_size(256).with_format('png').read()
                 data=await asyncio.to_thread(card_bytes,member.display_name,guild.name,
-                    text.replace(member.mention,member.display_name),self.store.option(guild.id,'welcome_color','#87CEEB'),avatar,tr(language,'Welcome, {name}!',name=member.display_name[:30]))
+                    text.replace(member.mention,member.display_name),self.store.option(guild.id,'welcome_color','#87CEEB'),avatar,tr(language,'Welcome, {name}!',name=member.display_name[:30]),self.store.option(guild.id,'branding',{}).get('name','Vivi'))
                 await channel.send(text,file=discord.File(io.BytesIO(data),filename='welcome.png'),
                                    allowed_mentions=discord.AllowedMentions(users=[member],roles=False,everyone=False))
             else: await channel.send(text,allowed_mentions=discord.AllowedMentions(users=[member],roles=False,everyone=False))
@@ -332,9 +340,12 @@ class Community:
             try: await self.productivity.on_message(message)
             except discord.HTTPException as error: self.productivity.error('afk reply',error)
         if not edited and enabled(self.store,guild.id,'xp'):
+            xp_channel=message.channel.parent_id if isinstance(message.channel,discord.Thread) else message.channel.id
+            rule=self.store.option(guild.id,'xp_channels',{}).get(str(xp_channel),dict(enabled=True,amount=10,cooldown=60))
+            if not rule['enabled']: return
             p=self.store.profile(guild.id,message.author.id)
             before=p['coins']
-            if award_activity(p,message.content,timestamp()):
+            if award_activity(p,message.content,timestamp(),amount=rule['amount'],cooldown=rule['cooldown'],channel=xp_channel):
                 if not enabled(self.store,guild.id,'economy'): p['coins']=before
                 self.store.save_profile(guild.id,message.author.id,p)
 
@@ -867,6 +878,7 @@ def register_extra(bot):
         item=SHOP.get(p['equipped']); title=item[1] if item else 'Member'; tint=item[2] if item else 0x87CEEB
         embed=discord.Embed(title=f'{member.display_name} · {title}',color=tint,
             description=f'Level {p["xp"]//100} · {p["xp"]} XP\n{p["coins"]} virtual coins\nAchievements: '+(', '.join(p['achievements']) or 'None yet'))
+        embed.set_footer(text=store.option(i.guild_id,'branding',{}).get('name','Vivi'))
         await i.response.send_message(embed=embed,ephemeral=not p['visible'])
 
     @economy.command(name='leaderboard',description='Show the top ten members who have not opted out.')

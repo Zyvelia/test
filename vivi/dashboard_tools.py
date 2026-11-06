@@ -56,7 +56,7 @@ class DashboardTools:
             try: image=await avatar.with_size(256).with_format('png').read()
             except Exception: pass
         from .i18n import tr
-        png=await asyncio.to_thread(card_bytes,name,guild.name,text.replace('{member}',name).replace('{server}',guild.name),accent,image, tr(self.service.store.option(gid,'language','en'),'Welcome, {name}!',name=name[:30]))
+        png=await asyncio.to_thread(card_bytes,name,guild.name,text.replace('{member}',name).replace('{server}',guild.name),accent,image, tr(self.service.store.option(gid,'language','en'),'Welcome, {name}!',name=name[:30]),self.service.store.option(gid,'branding',{}).get('name','Vivi'))
         return web.Response(body=png,content_type='image/png')
 
     async def revision(self,request):

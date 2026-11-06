@@ -7,8 +7,10 @@ services:
     environment:
       VIVI_CONTAINER: "1"
       DASHBOARD_BIND_HOST: "0.0.0.0"
+      WEBHOOK_BIND_HOST: "0.0.0.0"
     ports:
       - "127.0.0.1:8765:8765"
+      - "127.0.0.1:8766:8766"
     volumes:
       - vivi-data:/app/data
     stop_grace_period: 20s

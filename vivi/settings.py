@@ -39,6 +39,8 @@ def validate_resources(store,guild,name,value):
         raise ValueError('Choose an existing channel of the correct type in this server.')
     if name=='ai_channels' and any(not isinstance(guild.get_channel(x),discord.TextChannel) for x in value):
         raise ValueError('Choose text channels in this server.')
+    if name=='xp_channels' and any(not isinstance(guild.get_channel(int(x)),(discord.TextChannel,discord.ForumChannel)) for x in value):
+        raise ValueError('XP overrides require text channels in this server.')
     if name=='ticket_categories' and any(not isinstance(guild.get_channel(x),discord.CategoryChannel) for x in value.values()):
         raise ValueError('Every ticket category must be a Discord category in this server.')
 

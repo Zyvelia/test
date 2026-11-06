@@ -235,6 +235,8 @@ class ViviBot(commands.Bot):
         from .productivity import register_productivity
         from .i18n import ViviTranslator
         register_productivity(self)
+        from .customization import register_customization
+        register_customization(self)
         await self.tree.set_translator(ViviTranslator())
         await self.community.start()
         dev = os.getenv('DEV_GUILD_ID', '').strip()

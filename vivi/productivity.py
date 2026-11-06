@@ -110,6 +110,7 @@ class Productivity:
                     notification_loop='running' if notifications and not notifications.done() else 'not running',
                     last_timer_tick=self.last_tick or None,open_tickets=tickets,records=counts,
                     audio_queue=len(self.service.voice.queues.get(guild,[])),
+                    webhook_jobs=[dict(id=r['id'],attempts=r['data']['attempts'],error=r['data'].get('error','')) for r in self.store.records(guild,'webhook_job')],
                     database_bytes=self.store.path.stat().st_size if self.store.path.exists() else 0,
                     last_backup=self.store.option(guild,'internal_backup_last',None),
                     notifications=[dict(id=r['id'],error=r['data'].get('error',''),next_poll=r['data'].get('next_poll')) for r in self.store.records(guild,'notification')],

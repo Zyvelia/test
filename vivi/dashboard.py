@@ -17,10 +17,12 @@ from .settings import DEFAULTS, parse_value, validate_resources, validate_setup
 
 DISCORD='https://discord.com/api/v10'
 
+from .advanced_dashboard import AdvancedDashboard
+from .customization import UI_BRAND,THEMES,validate_brand
 from .dashboard_tools import DashboardTools
 from .i18n import UI_LANGUAGE,localize_html,tr
 
-class Dashboard(DashboardTools):
+class Dashboard(AdvancedDashboard,DashboardTools):
     def __init__(self,service):
         self.service=service; self.sessions={}; self.states={}; self.runner=None
         self.client=os.getenv('DISCORD_CLIENT_ID','').strip()
@@ -44,7 +46,8 @@ class Dashboard(DashboardTools):
                              web.post('/verify',self.verify),web.post('/preview',self.preview),
                              web.get('/revision',self.revision),web.post('/rollback',self.rollback),
                              web.post('/backup-now',self.backup_now),web.get('/scheduled-backup',self.scheduled_backup),
-                             web.post('/aliases',self.aliases),web.get('/health',self.health)])
+                             web.post('/aliases',self.aliases),web.get('/health',self.health),web.post('/xp-channel',self.xp_channel),
+                             web.post('/branding',self.branding),web.post('/filters',self.filters)])
 
     @web.middleware
     async def security(self,request,handler):
@@ -53,6 +56,7 @@ class Dashboard(DashboardTools):
         if request.host not in {expected, self.host if self.port==80 else expected}:
             raise web.HTTPForbidden(text='Unexpected Host header.')
         locale_token=UI_LANGUAGE.set('en')
+        brand_token=UI_BRAND.set({})
         actor_token=self.service.store.actor.set('dashboard')
         try:
             try: response=await handler(request)
@@ -61,6 +65,7 @@ class Dashboard(DashboardTools):
             self.headers(response);return response
         finally:
             UI_LANGUAGE.reset(locale_token)
+            UI_BRAND.reset(brand_token)
             self.service.store.actor.reset(actor_token)
 
     @staticmethod
@@ -89,18 +94,24 @@ class Dashboard(DashboardTools):
         if str(guild) not in guilds or self.service.bot.get_guild(guild) is None:
             raise web.HTTPForbidden(text='You must be a current server owner/administrator and this bot must be installed.')
         UI_LANGUAGE.set(self.service.store.option(guild,'language','en'))
+        UI_BRAND.set(self.service.store.option(guild,'branding',{}))
         self.service.store.actor.set('dashboard:'+str(session.get('user_id','admin')))
         return session
 
     def page(self,content):
         content=localize_html(UI_LANGUAGE.get(),content)
+        branding=UI_BRAND.get()
+        try: validate_brand(branding)
+        except ValueError: branding={}
+        palette=dict(THEMES[branding.get('theme','midnight')]);palette['accent']=branding.get('accent',palette['accent'])
+        css=f"body{{background:{palette['background']};color:{palette['text']}}}form,input,select,textarea{{background:{palette['panel']};color:{palette['text']}}}a{{color:{palette['accent']}}}button{{background:{palette['accent']};color:{palette['background']}}}"
         return web.Response(content_type='text/html',text='<!doctype html><html><head><meta charset="utf-8"><title>Vivi Dashboard</title>'
             '<style>body{font:16px system-ui;background:#111827;color:#e5e7eb;max-width:850px;margin:40px auto;padding:20px}'
             'a{color:#87ceeb}form{margin:12px 0;padding:14px;background:#1f2937;border-radius:12px}'
             'button{padding:8px 14px;border:0;border-radius:8px;cursor:pointer}small{color:#aab6c9}'
             'input,select,textarea{box-sizing:border-box;max-width:100%;padding:9px;margin:5px;background:#111827;color:#fff;border:1px solid #6b7280;border-radius:6px}'
             'textarea{width:95%;min-height:70px}summary{font-size:1.3em;cursor:pointer;padding:15px}label{display:block}table{width:100%;text-align:left}td{padding:7px}</style></head><body>'
-            '<h1>Vivi · '+html.escape(tr(UI_LANGUAGE.get(),'Server Dashboard'))+'</h1>'+content+'</body></html>')
+            '<style>'+css+'</style><h1>'+html.escape(branding.get('name','Vivi'))+' · '+html.escape(tr(UI_LANGUAGE.get(),'Server Dashboard'))+'</h1><p>'+html.escape(branding.get('tagline',''))+'</p>'+content+'</body></html>')
 
     async def index(self,request):
         if not request.cookies.get('vivi_session'): return self.page('<p><a href="/login">Sign in with Discord</a></p><p>Local dashboard: server administrators only.</p>')
@@ -113,6 +124,7 @@ class Dashboard(DashboardTools):
         except ValueError: raise web.HTTPBadRequest(text='Invalid server ID.')
         session=await self.authorize(request,guild)
         UI_LANGUAGE.set(self.service.store.option(guild,'language','en'))
+        UI_BRAND.set(self.service.store.option(guild,'branding',{}))
         name=html.escape(self.service.bot.get_guild(guild).name)
         forms=[]
         for feature in FEATURES:
@@ -204,7 +216,7 @@ class Dashboard(DashboardTools):
         channel_keys={'goodbye_channel':texts,'birthday_channel':texts,'daily_channel':texts,'raid_channel':texts,
                       'voice_category':categories,'voice_lobby':voices,'autorole':roles,'rules_role':roles}
         for key,typ in OPTION_TYPES.items():
-            if key in {'faq','ticket_categories','aliases'}: continue
+            if key in {'faq','ticket_categories','aliases','xp_channels','branding'}: continue
             default=DEFAULTS.get(key,[] if typ is list else False if typ is bool else 0 if typ is int else '')
             if key=='welcome_text': default=tr(store.option(gid,'language','en'),'Welcome {member} to {server}!')+' '+tr(store.option(gid,'language','en'),'Please read the rules and choose your roles.')
             if key=='goodbye_text': default=tr(store.option(gid,'language','en'),'Goodbye {member}.')
@@ -239,10 +251,10 @@ class Dashboard(DashboardTools):
             d=record['data']
             subscriptions+='<form action="/subscription" method="post">'+hidden+f'<input type="hidden" name="id" value="{record["id"]}">{html.escape(d["provider"])}: {html.escape(d["source"])} → {d["channel"]}<br><small>Last error: {html.escape(d.get("error") or "none recorded")}</small> <button name="action" value="remove">Remove</button></form>'
             subscriptions+='<form action="/subscription-test" method="post">'+hidden+f'<input type="hidden" name="id" value="{record["id"]}"><button>Test provider metadata (no Discord post)</button></form>'
-        subscriptions+='<form action="/subscription" method="post">'+hidden+self.select('provider',[(x,x) for x in ['twitch','youtube','github_releases','github_commits']])+self.select('channel',texts)+'<input name="source" placeholder="Twitch login / UC channel ID / owner/repo" required><button name="action" value="add">Add subscription</button></form></details>'
+        subscriptions+='<form action="/subscription" method="post">'+hidden+self.select('provider',[(x,x) for x in ['twitch','youtube','github_releases','github_commits','webhook']])+self.select('channel',texts)+'<input name="source" placeholder="Twitch login / UC channel ID / owner/repo" required><button name="action" value="add">Add subscription</button></form></details>'
         backup=f'<details><summary>Backup and restore</summary><p><a href="/backup?guild={gid}">Download configuration backup</a></p><form action="/restore" method="post" enctype="multipart/form-data">'+hidden+'<input name="file" type="file" accept=".json" required><label><input name="confirm" type="checkbox" value="yes" required> Replace this server’s configuration with the backup</label><button>Restore configuration</button></form></details>'
         verification='<details><summary>Live permission and provider checks</summary><form action="/verify" method="post">'+hidden+'<label><input name="providers" type="checkbox" value="yes"> Also send a small AI/translation test request (provider charges may apply)</label><button>Run checks without posting Discord messages</button></form></details>'
-        return setup+fields+faq+tickets+subscriptions+backup+verification+self.tools_forms(gid,session)
+        return setup+fields+faq+tickets+subscriptions+backup+verification+self.tools_forms(gid,session)+self.advanced_forms(gid,session)
 
     async def form(self,request):
         data=await request.post(); session=self.session(request)
@@ -322,6 +334,7 @@ class Dashboard(DashboardTools):
     async def subscription_test(self,request):
         data,session,gid,guild=await self.form(request); record=self.service.store.record(str(data.get('id','')))
         if not record or record['guild']!=gid or record['kind']!='notification': raise web.HTTPNotFound(text='Subscription not found.')
+        if record['data']['provider']=='webhook': return self.page('<p>This watch is incoming-only. Send a signed test event to its callback; no provider metadata was queried.</p>')
         try:
             events=await self.service.operations.events(record['data'],gid)
             result=f'Provider responded with {len(events)} recent event(s). No Discord notification was posted.'
