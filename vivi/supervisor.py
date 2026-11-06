@@ -8,6 +8,8 @@ import time
 ROOT=Path(__file__).resolve().parents[1]
 
 def main():
+    if sys.stdout is None: sys.stdout=open(os.devnull,'w')
+    if sys.stderr is None: sys.stderr=open(os.devnull,'w')
     folder=ROOT/'data'/'logs'; folder.mkdir(parents=True,exist_ok=True)
     delay=5
     try:
@@ -18,7 +20,7 @@ def main():
                 old.unlink(missing_ok=True); path.replace(old)
             started=time.monotonic()
             with path.open('a',encoding='utf-8') as log:
-                process=subprocess.Popen([sys.executable,'-u','-m','aurora.bot'],cwd=ROOT,
+                process=subprocess.Popen([sys.executable,'-u','-m','vivi.bot'],cwd=ROOT,
                     stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace')
                 try:
                     for line in process.stdout:

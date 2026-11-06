@@ -8,9 +8,9 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
-from aurora.storage import Store
-from aurora.policy import may_close, may_moderate, safe_self_role
-from aurora.bot import AuroraBot, OpenTicketView, RoleView, CloseTicketView, ConfirmClose, register_commands
+from vivi.storage import Store
+from vivi.policy import may_close, may_moderate, safe_self_role
+from vivi.bot import ViviBot, OpenTicketView, RoleView, CloseTicketView, ConfirmClose, register_commands
 
 
 class StorageTests(unittest.TestCase):
@@ -93,7 +93,7 @@ class InteractionTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.tmp.name) / 'db.sqlite3')
-        self.bot = AuroraBot(self.store)
+        self.bot = ViviBot(self.store)
         await self.bot.__aenter__()
         self.store.configure(1, 2, 3, 4, 5)
         self.channel = NS(id=55, mention='<#55>', send=AsyncMock(), delete=AsyncMock())
@@ -128,7 +128,7 @@ class InteractionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_ticket_welcome_cleans_up_channel_and_record(self):
         self.channel.send.side_effect = RuntimeError('Simulated failure')
-        with self.assertLogs('aurora', level='ERROR'):
+        with self.assertLogs('vivi', level='ERROR'):
             await OpenTicketView(self.bot).open_ticket.callback(self.interaction())
         self.channel.delete.assert_awaited_once()
         self.assertIsNone(self.store.ticket_for_user(1,8))
@@ -163,7 +163,7 @@ class InteractionTests(unittest.IsolatedAsyncioTestCase):
             raise RuntimeError('Simulated transcript failure')
             yield
         i.channel=NS(history=broken_history, delete=AsyncMock())
-        with self.assertLogs('aurora',level='ERROR'):
+        with self.assertLogs('vivi',level='ERROR'):
             await ConfirmClose(self.bot,8).confirm.callback(i)
         i.channel.delete.assert_not_awaited()
         self.assertIsNotNone(self.store.ticket_for_channel(55))
@@ -180,7 +180,7 @@ class InteractionTests(unittest.IsolatedAsyncioTestCase):
         async def delete(**kwargs):
             self.assertTrue(path.exists())
         i.channel=NS(history=history, delete=AsyncMock(side_effect=delete))
-        with patch('aurora.bot.ROOT',Path(self.tmp.name)), patch('aurora.bot.audit',new_callable=AsyncMock):
+        with patch('vivi.bot.ROOT',Path(self.tmp.name)), patch('vivi.bot.audit',new_callable=AsyncMock):
             await ConfirmClose(self.bot,8).confirm.callback(i)
         self.assertLess(path.read_text().index('old message'),path.read_text().index('new message'))
         self.assertIn('https://example.com/file',path.read_text())
@@ -196,10 +196,10 @@ class InteractionTests(unittest.IsolatedAsyncioTestCase):
         self.guild.fetch_member=AsyncMock(return_value=member)
         view=RoleView(self.bot,1,33)
         await view.toggle(self.interaction())
-        member.add_roles.assert_awaited_once_with(role,reason='Aurora self-service role')
+        member.add_roles.assert_awaited_once_with(role,reason='Vivi self-service role')
         member.roles=[role]
         await view.toggle(self.interaction())
-        member.remove_roles.assert_awaited_once_with(role,reason='Aurora self-service role')
+        member.remove_roles.assert_awaited_once_with(role,reason='Vivi self-service role')
 
     async def test_welcome_event_mentions_only_joining_member(self):
         welcome=NS(send=AsyncMock())

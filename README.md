@@ -1,6 +1,6 @@
-# Aurora Discord Bot
+# Vivi Discord Bot
 
-A Discord server bot you can run on your **Windows PC** for free. Includes welcome
+A Discord server bot you can run on **Windows or Linux** for free. Includes welcome
 messages, self-service role buttons, staff moderation, and private support tickets.
 This replaces the Minecraft project; previous versions remain in Git history.
 
@@ -18,7 +18,9 @@ This replaces the Minecraft project; previous versions remain in Git history.
 - Timezones, unit conversions, optional translation, and data deletion requests.
 - Per-server switches, configuration backups/restores, and a local Discord-login dashboard.
 - Optional AI with channel restrictions, daily quotas, and opt-in expiring memory.
-- Crash recovery with backoff and private local error logs.
+- Crash recovery, optional Windows/Linux automatic startup, and private local error logs.
+- Uploaded-audio queues, temporary voice rooms, advanced moderation options, ticket
+  claiming/categories/priorities/ratings, and Twitch/YouTube/GitHub notifications.
 
 **AI is off by default.** All new optional features start off; enable only the ones
 you want with `/admin feature`. Existing welcome, roles, tickets and moderation
@@ -32,6 +34,19 @@ No paid subscription or port forwarding is needed for the core bot. Optional hos
 translation/AI providers may charge; local models need a separate model server.
 Keep your PC awake, online, and the terminal open. Run only **one copy** for a given
 bot token/database. The launcher restarts crashes but cannot run while your PC sleeps.
+
+## Linux support and latest upgrades
+
+For Linux, see [Linux setup and systemd startup](docs/LINUX.md): `bash setup.sh`,
+then `bash start.sh`. All core bot, dashboard, voice and notification features use
+the same Python code on both operating systems.
+
+The [Vivi upgrade guide](docs/VIVI-UPGRADE.md) covers the full dashboard, Windows
+Task Scheduler/Linux systemd startup, uploaded-audio music, temporary voice rooms,
+raid/mention/warning protections, staff ticket tools, ratings and external alerts.
+New capabilities remain optional and off by default. Run `verify.bat` or
+`bash verify.sh` for a report distinguishing live passes, missing configuration and
+checks that still need your browser or a real Discord voice connection.
 
 ## 1. Download and prepare (Windows)
 
@@ -48,7 +63,7 @@ You can rerun setup.bat to refresh dependencies; it preserves an existing .env.
 ## 2. Create your Discord bot
 
 1. Open https://discord.com/developers/applications and choose **New Application**.
-   Name it whatever you like, such as Aurora.
+   Name it whatever you like, such as Vivi.
 2. Open **Bot**. Use **Reset Token** to generate its token if needed. Paste the
    token only into the local `.env` file after `DISCORD_TOKEN=`. Save the file.
    **Never send the token in chat, upload .env, or show it in a screenshot.**
@@ -59,6 +74,7 @@ You can rerun setup.bat to refresh dependencies; it preserves an existing .env.
 5. Select bot permissions: **View Channels**, **Send Messages**, **Read Message
    History**, **Embed Links**, **Attach Files**, **Manage Roles**, **Manage Channels**,
    **Manage Messages**, **Moderate Members**, **Kick Members**, and **Ban Members**.
+   For optional voice tools, also grant **Connect**, **Speak**, and **Move Members**.
    Administrator permission is not required.
 6. Open the generated invite URL, choose your server, and authorize it. You need
    permission to manage that server.
@@ -138,7 +154,9 @@ are not archived. This is a basic support transcript, not a complete server back
 
 - `.env`: private bot token; excluded from Git.
 - `.venv/`: isolated installed dependencies; excluded from Git.
-- `data/aurora.sqlite3`: settings, warnings, role registrations, and open tickets.
+- `data/vivi.sqlite3`: settings, warnings, role registrations, and open tickets.
+  Existing `data/aurora.sqlite3` installations are reused automatically; do not keep
+  both databases in the same data directory.
 - `data/transcripts/`: saved text transcripts; excluded from Git.
 - `data/logs/`: bounded local crash/error logs; excluded from Git.
 - The database also stores optional profiles, votes, timers, appeals and AI memory
@@ -167,11 +185,13 @@ support transcripts are retained. The database is not encrypted on disk.
 ```sh
 python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
-python -m aurora.bot
+python -m vivi.bot
 ```
 
 Automated tests exercise database migrations and persistence, ticket privacy,
 moderation policy, timer recovery, voting, economy, opt-in AI controls and local
 dashboard HTTP/OAuth permission paths without connecting to Discord or AI providers. GitHub Actions runs the suite on Linux and Windows.
 Actual Discord bot/OAuth login, live channel permissions, external providers,
-and Windows batch launchers still need testing on your server/PC. No bot token is included.
+voice delivery and Windows startup still need testing on your own server/PC.
+Linux setup, local audio decoding and dashboard HTTP behavior are tested here;
+actual service activation depends on your host’s systemd user session. No bot token is included.

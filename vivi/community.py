@@ -27,7 +27,7 @@ from .features import (FEATURES, SHOP, TRIVIA, QUESTIONS, WORDS, enabled, valida
                        win_board, convert)
 from .policy import safe_self_role, may_moderate
 
-LOG=logging.getLogger('aurora.community')
+LOG=logging.getLogger('vivi.community')
 UTC=dt.timezone.utc
 
 def timestamp(): return time.time()
@@ -88,8 +88,8 @@ class FeatureView(discord.ui.View):
                         await reply(i,'One role is missing or no longer safe. Ask an admin to replace this menu.'); return
                 for item in record['data']['roles']:
                     role=i.guild.get_role(item['id'])
-                    if role.id in values and role not in member.roles: await member.add_roles(role,reason='Aurora role menu')
-                    if role.id not in values and role in member.roles: await member.remove_roles(role,reason='Aurora role menu')
+                    if role.id in values and role not in member.roles: await member.add_roles(role,reason='Vivi role menu')
+                    if role.id not in values and role in member.roles: await member.remove_roles(role,reason='Vivi role menu')
             await reply(i,'Your selections were saved. This menu replaces only the roles it lists.')
         except discord.HTTPException:
             await reply(i,'Could not update all roles. Check my role position and retry.')
@@ -135,7 +135,7 @@ class DeleteView(discord.ui.View):
         self.service.store.delete_personal(self.guild,self.user)
         for record in self.service.store.records(self.guild):
             data=record['data']
-            if record['kind'] in {'appeal','report'} and data.get('author')==self.user:
+            if (record['kind'] in {'appeal','report'} and data.get('author')==self.user) or (record['kind']=='ticket_rating' and data.get('user')==self.user):
                 self.service.store.delete_record(record['id'])
             elif record['kind']=='report' and data.get('target')==self.user:
                 data['target']=0; self.service.store.put_record(self.guild,record['kind'],data,record['id'])
@@ -188,7 +188,10 @@ class GameView(discord.ui.View):
 class Community:
     def __init__(self,bot):
         self.bot=bot; self.store=bot.store; self.lock=asyncio.Lock(); self.spam=defaultdict(deque); self.automod_last={}; self.ai_busy=set()
-        self.session=None; self.task=None; self.dashboard=None
+        self.session=None; self.task=None; self.dashboard=None; self.notification_task=None
+        from .operations import Operations
+        from .music import VoiceTools
+        self.operations=Operations(self); self.voice=VoiceTools(self)
         self.bot.add_listener(self.on_message,'on_message')
         self.bot.add_listener(self.on_message_edit,'on_message_edit')
         self.bot.add_listener(self.on_member_remove,'on_member_remove')
@@ -198,6 +201,9 @@ class Community:
         for record in self.store.records():
             if record['kind'] in {'poll','giveaway','suggestion','role_menu','rules'} and not record['data'].get('closed'):
                 self.bot.add_view(FeatureView(self,record))
+        from .operations import RatingView
+        for record in self.store.records(kind='ticket_rating'):
+            if not record['data'].get('rating') and record['data']['expires']>time.time(): self.bot.add_view(RatingView(self.operations,record['id']))
         if os.getenv('DASHBOARD_ENABLED','').lower()=='true':
             from .dashboard import Dashboard
             try:
@@ -205,14 +211,19 @@ class Community:
                 await self.dashboard.start()
             except Exception:
                 LOG.error('Dashboard could not start. Check OAuth settings and whether its local port is in use.')
-        self.task=asyncio.create_task(self.scheduler(),name='aurora-scheduler')
+        self.task=asyncio.create_task(self.scheduler(),name='vivi-scheduler')
+        self.notification_task=asyncio.create_task(self.notification_scheduler(),name='vivi-notifications')
 
     async def close(self):
+        if self.notification_task:
+            self.notification_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError): await self.notification_task
         if self.task:
             self.task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 try: await self.task
                 except Exception: LOG.exception('Scheduler stopped unexpectedly')
+        await self.voice.close()
         if self.dashboard: await self.dashboard.close()
         if self.session: await self.session.close()
 
@@ -256,10 +267,11 @@ class Community:
 
     async def on_join(self,member):
         guild=member.guild
-        if enabled(self.store,guild.id,'autorole'):
+        await self.operations.on_join(member)
+        if enabled(self.store,guild.id,'autorole') and (not enabled(self.store,guild.id,'raid_protection') or self.store.option(guild.id,'internal_raid_until',0)<=time.time()):
             role=guild.get_role(self.store.option(guild.id,'autorole',0))
             if safe_role(guild,self.store,role):
-                try: await member.add_roles(role,reason='Aurora automatic newcomer role')
+                try: await member.add_roles(role,reason='Vivi automatic newcomer role')
                 except discord.HTTPException: LOG.warning('Automatic role failed in %s',guild.id)
         if not enabled(self.store,guild.id,'welcome'): return
         config=self.store.settings(guild.id); channel=guild.get_channel(config['welcome']) if config else None
@@ -290,13 +302,17 @@ class Community:
     async def on_message(self,message,edited=False):
         if not message.guild or message.author.bot or not isinstance(message.author,discord.Member): return
         guild=message.guild; p=None
-        if enabled(self.store,guild.id,'automod') and not message.author.guild_permissions.manage_messages:
+        if (enabled(self.store,guild.id,'automod') or enabled(self.store,guild.id,'mention_protection')) and not message.author.guild_permissions.manage_messages:
             now=timestamp(); key=(guild.id,message.author.id); recent=self.spam[key]
             while recent and now-recent[0]>8: recent.popleft()
             recent.append(now)
-            reason=('spam' if len(recent)>self.store.option(guild.id,'spam_limit',6) else
-                    'blocked words' if blocked_word(message.content,self.store.option(guild.id,'blocked_words',[])) else
-                    'suspicious link' if suspicious_link(message.content,self.store.option(guild.id,'blocked_domains',[])) else '')
+            mentions=len({u.id for u in message.mentions})+len({r.id for r in message.role_mentions}) if enabled(self.store,guild.id,'mention_protection') else 0
+            mention_limit=self.store.option(guild.id,'mention_limit',5)
+            reason='mention spam' if enabled(self.store,guild.id,'mention_protection') and (mentions>mention_limit or message.mention_everyone) else ''
+            if not reason and enabled(self.store,guild.id,'automod'):
+                reason=('spam' if len(recent)>self.store.option(guild.id,'spam_limit',6) else
+                        'blocked words' if blocked_word(message.content,self.store.option(guild.id,'blocked_words',[])) else
+                        'suspicious link' if suspicious_link(message.content,self.store.option(guild.id,'blocked_domains',[])) else '')
             if reason:
                 try:
                     await message.delete()
@@ -354,6 +370,7 @@ class Community:
         self.store.put_record(guild.id,'giveaway',data,record['id'])
 
     async def run_due(self):
+        await self.voice.maintenance()
         now=timestamp()
         for key,recent in list(self.spam.items()):
             if not recent or now-recent[-1]>60: self.spam.pop(key,None)
@@ -365,9 +382,9 @@ class Community:
                 if kind=='tempban' and d['until']<=now:
                     try:
                         ban=await guild.fetch_ban(discord.Object(id=d['user']))
-                        if f'Aurora tempban {record["id"]}:' not in (ban.reason or ''):
+                        if f'Vivi tempban {record["id"]}:' not in (ban.reason or ''):
                             self.store.delete_record(record['id']); continue
-                        await guild.unban(discord.Object(id=d['user']),reason='Aurora temporary ban expired')
+                        await guild.unban(discord.Object(id=d['user']),reason='Vivi temporary ban expired')
                     except discord.NotFound: pass
                     await self.case(guild,d['user'],self.bot.user.id,'automatic unban','Temporary ban expired')
                     self.store.delete_record(record['id'])
@@ -378,7 +395,7 @@ class Community:
                     if ow.send_messages is not False:
                         self.store.delete_record(record['id']); continue
                     ow.send_messages=d['previous']
-                    await channel.set_permissions(guild.default_role,overwrite=ow,reason='Aurora timed lockdown expired')
+                    await channel.set_permissions(guild.default_role,overwrite=ow,reason='Vivi timed lockdown expired')
                     self.store.delete_record(record['id'])
                 elif kind in {'poll','giveaway'} and not d.get('closed') and d['ends']<=now:
                     if kind=='poll': await self.finish_poll(record)
@@ -412,6 +429,13 @@ class Community:
             try:
                 async with self.lock: await self.run_due()
             except Exception: LOG.exception('Scheduler iteration failed; retrying in 30 seconds')
+            await asyncio.sleep(30)
+
+    async def notification_scheduler(self):
+        await self.bot.wait_until_ready()
+        while not self.bot.is_closed():
+            try: await self.operations.poll_notifications()
+            except Exception: LOG.exception('Notification scheduler failed; retrying')
             await asyncio.sleep(30)
 
 
@@ -452,6 +476,12 @@ def register_extra(bot):
         store.set_option(i.guild_id,'feature:'+name,enabled)
         await reply(i,f'{name}: {"ON" if enabled else "OFF"}.')
 
+    @admin_command('verify','Check this server’s bot permissions without posting test messages.')
+    async def verify(i:discord.Interaction):
+        from .verify import guild_checks
+        checks=guild_checks(store,i.guild)
+        await reply(i,'\n'.join(f'{c["status"]}: {c["name"]} — {c["detail"]}' for c in checks))
+
     @admin_command('features','Show all per-server feature switches.')
     async def features(i:discord.Interaction):
         await reply(i,'\n'.join(f'{name}: {"ON" if enabled(store,i.guild_id,name) else "OFF"}' for name in FEATURES))
@@ -465,20 +495,9 @@ def register_extra(bot):
     async def setting(i:discord.Interaction,name:str,value:app_commands.Range[str,1,1800]):
         from .features import OPTION_TYPES
         if name not in OPTION_TYPES or name=='faq': return await reply(i,'Unknown setting; use /admin faq_add for FAQ entries.')
-        typ=OPTION_TYPES[name]
+        from .settings import parse_value, validate_resources
         try:
-            parsed=(value.lower()=='true' if typ is bool else int(value) if typ is int else
-                    [x.strip() for x in value.split(',') if x.strip()] if typ is list else value)
-            if typ is bool and value.lower() not in {'true','false'}: raise ValueError('Use true or false.')
-            if name=='ai_channels': parsed=[int(x) for x in parsed]
-            if name=='blocked_domains': parsed=[x.lower().strip('.') for x in parsed]
-            validate_option(name,parsed)
-            if name in {'autorole','rules_role'} and parsed and not safe_role(i.guild,store,i.guild.get_role(parsed)):
-                raise ValueError('Choose a safe non-staff role below the bot role; run /setup first.')
-            if name in {'goodbye_channel','birthday_channel','daily_channel'} and parsed and not isinstance(i.guild.get_channel(parsed),discord.TextChannel):
-                raise ValueError('Choose a text channel in this server.')
-            if name=='ai_channels' and any(not isinstance(i.guild.get_channel(x),discord.TextChannel) for x in parsed):
-                raise ValueError('Every AI channel must be a text channel in this server.')
+            parsed=parse_value(name,value); validate_resources(store,i.guild,name,parsed)
             store.set_option(i.guild_id,name,parsed)
         except (ValueError,KeyError) as e: return await reply(i,str(e))
         await reply(i,f'Saved {name}.')
@@ -499,7 +518,7 @@ def register_extra(bot):
     @admin_command('backup','Download server configuration only; excludes tokens, profiles and transcripts.')
     async def backup(i:discord.Interaction):
         data=json.dumps(store.export_config(i.guild_id),indent=2).encode()
-        await i.response.send_message(file=discord.File(io.BytesIO(data),filename=f'aurora-config-{i.guild_id}.json'),ephemeral=True)
+        await i.response.send_message(file=discord.File(io.BytesIO(data),filename=f'vivi-config-{i.guild_id}.json'),ephemeral=True)
 
     @admin_command('restore','Restore this server configuration from a backup. Explicit confirmation required.')
     async def restore(i:discord.Interaction,file:discord.Attachment,confirm:bool=False):
@@ -507,14 +526,9 @@ def register_extra(bot):
         if file.size>131072: return await reply(i,'Backup must be under 128 KiB.')
         await i.response.defer(ephemeral=True)
         try:
-            data=json.loads(await file.read()); validate_backup(i.guild_id,data)
-            if data['settings']:
-                for key in ['welcome','category','logs']:
-                    if i.guild.get_channel(data['settings'][key]) is None: raise ValueError('A configured channel is missing.')
-                logs=i.guild.get_channel(data['settings']['logs'])
-                if not isinstance(logs,discord.TextChannel) or logs.permissions_for(i.guild.default_role).view_channel:
-                    raise ValueError('The staff log channel must remain private.')
-                if not i.guild.get_role(data['settings']['staff']): raise ValueError('Staff role is missing.')
+            data=json.loads(await file.read())
+            from .settings import validate_restore
+            validate_restore(store,i.guild,data)
             store.restore_config(i.guild_id,data)
             for row in store.roles():
                 if row['guild']==i.guild_id: bot.add_view(RoleView(bot,i.guild_id,row['role']))
@@ -616,7 +630,7 @@ def register_extra(bot):
             if any(r['data']['user']==member.id for r in store.records(i.guild_id,'tempban')):
                 return await reply(i,'This member already has a scheduled temporary ban.')
             ident=store.put_record(i.guild_id,'tempban',dict(user=member.id,until=timestamp()+hours*3600))
-            try: await member.ban(reason=f'Aurora tempban {ident}: {reason}'[:512],delete_message_seconds=0)
+            try: await member.ban(reason=f'Vivi tempban {ident}: {reason}'[:512],delete_message_seconds=0)
             except discord.HTTPException:
                 store.delete_record(ident); raise
         case=await service.case(i.guild,member.id,i.user.id,'temporary ban',f'{hours} hours: {reason}',member)
@@ -644,7 +658,7 @@ def register_extra(bot):
             ow=i.channel.overwrites_for(i.guild.default_role)
             ident=store.put_record(i.guild_id,'lockdown',dict(channel=i.channel_id,previous=ow.send_messages,until=timestamp()+minutes*60))
             ow.send_messages=False
-            try: await i.channel.set_permissions(i.guild.default_role,overwrite=ow,reason=f'Aurora lockdown by {i.user.id}')
+            try: await i.channel.set_permissions(i.guild.default_role,overwrite=ow,reason=f'Vivi lockdown by {i.user.id}')
             except discord.HTTPException: store.delete_record(ident); raise
         await service.case(i.guild,0,i.user.id,'channel lockdown',f'{i.channel_id}, {minutes} minutes')
         await reply(i,f'@everyone cannot send messages here for {minutes} minutes. Explicit role/member overrides and administrators can still speak.')
@@ -658,7 +672,7 @@ def register_extra(bot):
             if not matches: return await reply(i,'No bot-managed lockdown is active here.')
             record=matches[0]; ow=i.channel.overwrites_for(i.guild.default_role)
             ow.send_messages=record['data']['previous']
-            await i.channel.set_permissions(i.guild.default_role,overwrite=ow,reason=f'Aurora early unlock by {i.user.id}')
+            await i.channel.set_permissions(i.guild.default_role,overwrite=ow,reason=f'Vivi early unlock by {i.user.id}')
             store.delete_record(record['id'])
         await reply(i,'Previous @everyone Send Messages setting restored.')
 
@@ -667,7 +681,7 @@ def register_extra(bot):
         if not await permission(i,'manage_channels'): return
         if not isinstance(i.channel,discord.TextChannel): return await reply(i,'Choose a server text channel.')
         await i.response.defer(ephemeral=True)
-        await i.channel.edit(slowmode_delay=seconds,reason=f'Aurora slowmode by {i.user.id}')
+        await i.channel.edit(slowmode_delay=seconds,reason=f'Vivi slowmode by {i.user.id}')
         await service.case(i.guild,0,i.user.id,'slowmode',f'{i.channel_id}: {seconds} seconds')
         await reply(i,f'Slowmode set to {seconds} seconds.')
 

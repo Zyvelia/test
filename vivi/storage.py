@@ -142,10 +142,11 @@ class Store:
 
     def export_config(self, guild):
         config = self.settings(guild)
-        return {'version':1,'guild':guild,'settings':dict(config) if config else None,
+        return {'version':2,'guild':guild,'settings':dict(config) if config else None,
                 'options':{r['key']:json.loads(r['value']) for r in
                            self.db.execute("SELECT key,value FROM options WHERE guild=? AND key NOT LIKE 'internal_%'",(guild,))},
-                'roles':[r['role'] for r in self.db.execute('SELECT role FROM roles WHERE guild=?',(guild,))]}
+                'roles':[r['role'] for r in self.db.execute('SELECT role FROM roles WHERE guild=?',(guild,))],
+                'subscriptions':[{k:r['data'][k] for k in ['provider','source','channel']} for r in self.records(guild,'notification')]}
 
     def restore_config(self, guild, backup):
         # Validation happens before the transaction; personal data and records are never restored.
@@ -159,6 +160,11 @@ class Store:
             for role in backup['roles']:
                 self.db.execute('INSERT OR IGNORE INTO roles VALUES (?,?)',(guild,role))
             self.db.execute('DELETE FROM settings WHERE guild=?',(guild,))
+            self.db.execute("DELETE FROM records WHERE guild=? AND kind='notification'",(guild,))
+            from .operations import subscription
+            for item in backup.get('subscriptions',[]):
+                data=subscription(item['provider'],item['source'],item['channel'])
+                self.db.execute('INSERT INTO records VALUES (?,?,?,?)',(secrets.token_hex(8),guild,'notification',json.dumps(data)))
             s=backup['settings']
             if s:
                 self.db.execute('INSERT INTO settings VALUES (?,?,?,?,?)',
@@ -182,3 +188,12 @@ class Store:
             self.db.execute('DELETE FROM cases WHERE guild=? AND user=?',(guild,user))
             self.db.execute('UPDATE cases SET moderator=0 WHERE guild=? AND moderator=?',(guild,user))
             self.db.execute('UPDATE warnings SET moderator=0 WHERE guild=? AND moderator=?',(guild,user))
+
+
+def database_path(root):
+    """Keep existing installations on their database; new ones use the Vivi name."""
+    legacy=Path(root)/'data'/'aurora.sqlite3'
+    current=Path(root)/'data'/'vivi.sqlite3'
+    if legacy.exists() and current.exists():
+        raise ValueError('Both legacy and Vivi databases exist. Back them up and select one before starting.')
+    return legacy if legacy.exists() else current

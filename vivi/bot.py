@@ -10,11 +10,11 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from .storage import Store
+from .storage import Store, database_path
 from .policy import safe_self_role, may_moderate, may_close
 
 ROOT = Path(__file__).resolve().parents[1]
-LOG = logging.getLogger('aurora')
+LOG = logging.getLogger('vivi')
 
 
 async def reply(interaction, text):
@@ -62,10 +62,10 @@ class RoleView(discord.ui.View):
             try:
                 member = await i.guild.fetch_member(i.user.id)
                 if role in member.roles:
-                    await member.remove_roles(role, reason='Aurora self-service role')
+                    await member.remove_roles(role, reason='Vivi self-service role')
                     await reply(i, f'Removed {role.name}.')
                 else:
-                    await member.add_roles(role, reason='Aurora self-service role')
+                    await member.add_roles(role, reason='Vivi self-service role')
                     await reply(i, f'Added {role.name}.')
             except discord.HTTPException:
                 await reply(i, 'I could not update the role. Check Manage Roles and my role position.')
@@ -79,6 +79,16 @@ class OpenTicketView(discord.ui.View):
     @discord.ui.button(label='Open a support ticket', style=discord.ButtonStyle.primary,
                        custom_id='aurora:ticket:open')
     async def open_ticket(self, i, button):
+        if i.guild:
+            from .features import enabled
+            categories=self.bot.store.option(i.guild.id,'ticket_categories',{})
+            if enabled(self.bot.store,i.guild.id,'ticket_tools') and categories:
+                if not await self.bot.community.need(i,'tickets'): return
+                from .operations import TicketCategoryView
+                return await i.response.send_message('Choose a support category:',view=TicketCategoryView(self.bot,categories),ephemeral=True)
+        await self.create_ticket(i)
+
+    async def create_ticket(self, i, category_label='General'):
         if not i.guild:
             return await reply(i, 'Tickets work inside the server.')
         if not await self.bot.community.need(i,'tickets'): return
@@ -96,7 +106,8 @@ class OpenTicketView(discord.ui.View):
                     self.bot.store.remove_ticket(old['channel'])
                 except discord.HTTPException:
                     return await reply(i, 'Could not check your existing ticket. Try again shortly.')
-            category = i.guild.get_channel(config['category'])
+            categories=self.bot.store.option(i.guild.id,'ticket_categories',{})
+            category = i.guild.get_channel(categories.get(category_label,config['category']))
             staff = i.guild.get_role(config['staff'])
             if not isinstance(category, discord.CategoryChannel) or not staff:
                 return await reply(i, 'Ticket category or staff role is missing. Ask an admin to rerun /setup.')
@@ -113,9 +124,10 @@ class OpenTicketView(discord.ui.View):
             recorded = False
             try:
                 channel = await i.guild.create_text_channel(f'ticket-{i.user.id}',
-                    category=category, overwrites=overwrites, reason='Aurora support ticket')
+                    category=category, overwrites=overwrites, reason='Vivi support ticket')
                 self.bot.store.add_ticket(i.guild.id, i.user.id, channel.id)
                 recorded = True
+                self.bot.community.operations.save_ticket_meta(i.guild.id,channel.id,dict(category=category_label,priority='normal',claimed=0))
                 await channel.send(f'Welcome {i.user.mention}! Describe your issue below. '
                     'Server administrators and the configured support staff can see this channel. '
                     'Closing saves the most recent 1,000 messages, then deletes the channel.',
@@ -125,9 +137,10 @@ class OpenTicketView(discord.ui.View):
                 LOG.exception('Ticket creation failed')
                 if channel:
                     try:
-                        await channel.delete(reason='Incomplete Aurora ticket cleanup')
+                        await channel.delete(reason='Incomplete Vivi ticket cleanup')
                         if recorded:
                             self.bot.store.remove_ticket(channel.id)
+                            self.bot.store.delete_record(f'ticket:{channel.id}')
                     except discord.HTTPException:
                         LOG.warning('Incomplete ticket channel needs cleanup: %s', channel.id)
                 return await reply(i, 'Ticket creation failed. Ask staff to check my channel permissions.')
@@ -170,7 +183,8 @@ class ConfirmClose(discord.ui.View):
                 # Fetch newest messages, then put the limited transcript in chronological order.
                 messages = [m async for m in i.channel.history(limit=1000)]
                 lines = [f'Ticket {i.channel_id}; owner {ticket["user"]}; closed by {i.user.id}',
-                         'Most recent 1,000 messages. Attachments are links, not downloaded copies.']
+                         'Most recent 1,000 messages. Attachments are links, not downloaded copies.',
+                         str(self.bot.community.operations.ticket_meta(i.channel_id))]
                 for m in reversed(messages):
                     lines.append(f'[{m.created_at.isoformat()}] {m.author} ({m.author.id}): {m.content}')
                     lines.extend(a.url for a in m.attachments)
@@ -182,8 +196,9 @@ class ConfirmClose(discord.ui.View):
                 # A local transcript is required; Discord upload failure does not erase it.
                 await audit(self.bot, i.guild, f'Ticket {i.channel_id} closed by {i.user} ({i.user.id}).',
                             file=discord.File(io.BytesIO(data), filename=path.name))
-                await i.channel.delete(reason=f'Aurora ticket closed by {i.user.id}')
+                await i.channel.delete(reason=f'Vivi ticket closed by {i.user.id}')
                 self.bot.store.remove_ticket(i.channel_id)
+                await self.bot.community.operations.closed(i.guild,ticket)
             except Exception:
                 LOG.exception('Ticket close failed')
                 return await reply(i, 'Could not finish closing. The ticket record is retained; ask staff to check logs.')
@@ -191,7 +206,7 @@ class ConfirmClose(discord.ui.View):
             await reply(i, 'Ticket closed. Transcript saved on the host PC.')
 
 
-class AuroraBot(commands.Bot):
+class ViviBot(commands.Bot):
     def __init__(self, store):
         intents = discord.Intents.default()
         intents.members = True
@@ -213,6 +228,9 @@ class AuroraBot(commands.Bot):
         register_commands(self)
         from .community import register_extra
         register_extra(self)
+        from .operations import register_operations
+        from .music import register_voice
+        register_operations(self); register_voice(self)
         await self.community.start()
         dev = os.getenv('DEV_GUILD_ID', '').strip()
         if dev:
@@ -255,10 +273,10 @@ def register_commands(bot):
 
     @tree.command(name='help', description='See setup, member, and moderator commands.')
     async def help_command(i: discord.Interaction):
-        await reply(i, '**Aurora**\nMembers: /ping, role buttons, ticket buttons.\n'
+        await reply(i, '**Vivi**\nMembers: /ping, role buttons, ticket buttons.\n'
                     'Admins: /setup, /role_button, /ticket_panel.\n'
                     'Moderators: /warn, /warnings, /timeout, /untimeout, /kick, /ban, /purge.\n'
-                    'Search everything with /tools commands. Admins configure /admin features and /admin setting. '
+                    'Search everything with /tools commands. Vivi also has /ticket, /music, /room and /notify. Admins configure /admin features and the dashboard. '
                     'AI is optional and off by default. The host PC must stay awake.')
 
     @tree.command(name='setup', description='Configure welcome, support, and private staff logging channels.')
@@ -327,6 +345,7 @@ def register_commands(bot):
         await i.response.defer(ephemeral=True)
         case = await bot.community.case(i.guild, member.id, i.user.id, 'warning', reason, member)
         await reply(i, f'Warning #{ident} recorded for {member}. Case #{case}.')
+        await bot.community.operations.warning_threshold(i.guild,member,i.user.id)
 
     @tree.command(name='warnings', description='Show the most recent ten warnings for a member.')
     @app_commands.guild_only()
@@ -358,7 +377,7 @@ def register_commands(bot):
     async def untimeout(i: discord.Interaction, member: discord.Member):
         if not await guard(i, member): return
         await i.response.defer(ephemeral=True)
-        await member.timeout(None, reason=f'Aurora timeout removed by {i.user.id}')
+        await member.timeout(None, reason=f'Vivi timeout removed by {i.user.id}')
         await reply(i, f'Removed timeout for {member}.')
         await bot.community.case(i.guild, member.id, i.user.id, 'timeout removed', 'Removed by moderator', member)
 
@@ -425,8 +444,13 @@ def main():
     dev = os.getenv('DEV_GUILD_ID', '').strip()
     if dev and (not dev.isdigit() or int(dev) <= 0):
         LOG.error('DEV_GUILD_ID must be blank or a positive Discord server ID.'); raise SystemExit(2)
-    store = Store(ROOT / 'data' / 'aurora.sqlite3')
-    bot = AuroraBot(store)
+    from .runtime import SingleInstance
+    try:
+        instance=SingleInstance(ROOT/'data'/'vivi.lock')
+        store = Store(database_path(ROOT))
+    except ValueError as error:
+        LOG.error('%s',error); raise SystemExit(2)
+    bot = ViviBot(store)
     try:
         bot.run(token, log_handler=None)
     except discord.PrivilegedIntentsRequired:
@@ -435,6 +459,7 @@ def main():
         LOG.error('Discord rejected DISCORD_TOKEN. Reset it in the Developer Portal and update .env.'); raise SystemExit(2)
     finally:
         store.close()
+        instance.close()
 
 
 if __name__ == '__main__':

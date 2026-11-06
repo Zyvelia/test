@@ -18,12 +18,12 @@ from aiohttp import web
 from aiohttp.test_utils import make_mocked_request, TestClient, TestServer
 from PIL import Image
 
-from aurora.bot import AuroraBot, register_commands
-from aurora.community import FeatureView, GameView, DeleteView, card_bytes, register_extra
-from aurora.dashboard import Dashboard
-from aurora.features import (FEATURES, SHOP, award_activity, blocked_word, convert, enabled,
+from vivi.bot import ViviBot, register_commands
+from vivi.community import FeatureView, GameView, DeleteView, card_bytes, register_extra
+from vivi.dashboard import Dashboard
+from vivi.features import (FEATURES, SHOP, award_activity, blocked_word, convert, enabled,
                              suspicious_link, validate_backup, validate_option, win_board)
-from aurora.storage import Store
+from vivi.storage import Store
 
 class PureTests(unittest.TestCase):
     def test_suspicious_links_without_opening_urls(self):
@@ -147,11 +147,11 @@ class StoreTests(unittest.TestCase):
 class AsyncTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.store=Store(Path(self.tmp.name)/'db.sqlite3')
-        self.bot=AuroraBot(self.store); await self.bot.__aenter__()
+        self.bot=ViviBot(self.store); await self.bot.__aenter__()
         self.bot._connection.user=NS(id=99)
         self.service=self.bot.community
         register_commands(self.bot); register_extra(self.bot)
-        self.guild=NS(id=1,owner_id=100,me=NS(id=99),get_channel=lambda x:None)
+        self.guild=NS(id=1,owner_id=100,me=NS(id=99),get_channel=lambda x:None, text_channels=[],categories=[],voice_channels=[],roles=[])
         self.user=NS(id=7,bot=False,display_name='Alex',guild_permissions=discord.Permissions.all())
     async def asyncTearDown(self):
         await self.bot.close(); self.store.close(); self.tmp.cleanup()
@@ -275,7 +275,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_expired_tempban_and_lockdown_restore_after_restart(self):
         self.bot.get_guild=lambda x:self.guild
         ban=self.store.put_record(1,'tempban',dict(user=7,until=time.time()-10))
-        self.guild.fetch_ban=AsyncMock(return_value=NS(reason=f'Aurora tempban {ban}: test'))
+        self.guild.fetch_ban=AsyncMock(return_value=NS(reason=f'Vivi tempban {ban}: test'))
         self.guild.unban=AsyncMock()
         self.guild.default_role=object()
         channel=NS(overwrites_for=lambda role:discord.PermissionOverwrite(send_messages=False),set_permissions=AsyncMock())
@@ -298,7 +298,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         self.bot.get_guild=lambda x:self.guild
         ident=self.store.put_record(1,'tempban',dict(user=7,until=time.time()-1))
         self.guild.fetch_ban=AsyncMock(side_effect=RuntimeError('Network unavailable'))
-        with self.assertLogs('aurora.community',level='ERROR'): await self.service.run_due()
+        with self.assertLogs('vivi.community',level='ERROR'): await self.service.run_due()
         self.assertIsNotNone(self.store.record(ident))
 
     async def test_shop_does_not_spend_twice_or_allow_negative_balance(self):
@@ -332,25 +332,25 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         await view.confirm.callback(i)
         self.assertEqual(self.store.profile(1,7)['birthday'],'07-23')
         i=self.i()
-        with patch('aurora.community.audit',new_callable=AsyncMock): await view.confirm.callback(i)
+        with patch('vivi.community.audit',new_callable=AsyncMock): await view.confirm.callback(i)
         self.assertEqual(self.store.profile(1,7)['birthday'],'')
         self.assertEqual(len(self.store.records(1,'privacy')),1)
 
     async def test_dashboard_requires_fresh_admin_rights_and_rejects_csrf(self):
         dashboard=Dashboard(self.service)
         dashboard.sessions['sid']={'token':'opaque','csrf':'good','expires':time.time()+100}
-        request=make_mocked_request('GET','/',headers={'Cookie':'aurora_session=sid'})
+        request=make_mocked_request('GET','/',headers={'Cookie':'vivi_session=sid'})
         dashboard.api_guilds=AsyncMock(return_value={})
         self.bot.get_guild=lambda x:self.guild
         with self.assertRaises(web.HTTPForbidden): await dashboard.authorize(request,1)
-        post=NS(cookies={'aurora_session':'sid'},post=AsyncMock(return_value={'csrf':'wrong','guild':'1','feature':'ai','enabled':'true'}))
+        post=NS(cookies={'vivi_session':'sid'},post=AsyncMock(return_value={'csrf':'wrong','guild':'1','feature':'ai','enabled':'true'}))
         with self.assertRaises(web.HTTPForbidden): await dashboard.feature(post)
         self.assertFalse(enabled(self.store,1,'ai'))
 
     async def test_dashboard_oauth_state_rejects_wrong_browser(self):
         dashboard=Dashboard(self.service)
         dashboard.states['state']={'expires':time.time()+100,'verifier':'correct'}
-        request=NS(query={'state':'state','code':'unused'},cookies={'aurora_oauth':'wrong'})
+        request=NS(query={'state':'state','code':'unused'},cookies={'vivi_oauth':'wrong'})
         with self.assertRaises(web.HTTPForbidden): await dashboard.callback(request)
         self.assertNotIn('state',dashboard.states)
 
@@ -382,10 +382,10 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         dashboard.sessions['sid']={'token':'opaque','csrf':'good','expires':time.time()+100}
         dashboard.api_guilds=AsyncMock(return_value={'1':{'id':'1','name':self.guild.name,'permissions':'8'}})
         self.bot.get_guild=lambda x:self.guild
-        request=make_mocked_request('GET','/?guild=1',headers={'Cookie':'aurora_session=sid'})
+        request=make_mocked_request('GET','/?guild=1',headers={'Cookie':'vivi_session=sid'})
         response=await dashboard.index(request)
         self.assertIn('&lt;script&gt;',response.text); self.assertNotIn('<script>',response.text)
-        post=NS(cookies={'aurora_session':'sid'},post=AsyncMock(return_value={'csrf':'good','guild':'1','feature':'ai','enabled':'true'}))
+        post=NS(cookies={'vivi_session':'sid'},post=AsyncMock(return_value={'csrf':'good','guild':'1','feature':'ai','enabled':'true'}))
         with self.assertRaises(web.HTTPSeeOther): await dashboard.feature(post)
         self.assertTrue(enabled(self.store,1,'ai'))
         dashboard.api_guilds.return_value={}

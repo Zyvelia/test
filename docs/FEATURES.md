@@ -1,3 +1,6 @@
+See [Vivi upgrades](VIVI-UPGRADE.md) for the full dashboard, voice, moderation,
+ticket tools, notifications and startup additions.
+
 # Feature guide
 
 New optional features start **off**. Existing welcome messages, roles, tickets,
@@ -234,7 +237,8 @@ settings, feature switches, FAQs and registered role-button IDs. It excludes tok
 profiles, cases, tickets, transcripts, live panel definitions and timer records.
 `/admin restore file confirm:true` replaces this server's configuration atomically;
 backups from another server or with unknown fields are rejected. Repost panels if
-needed. Existing Discord channels, roles and permissions are not recreated.
+needed. Version 2 backups also include notification subscription definitions;
+version 1 backups are still accepted. Existing Discord channels, roles and permissions are not recreated.
 
 For a complete local backup, stop the bot and separately preserve the entire
 `data/` directory plus `.env` privately. Never upload these to the repository.
@@ -246,5 +250,6 @@ backoff; clean shutdowns, missing tokens, rejected tokens and missing privileged
 intents stop instead of looping. Ctrl+C stops the supervisor. Error output appears
 in the terminal and `data/logs/bot.log` (bounded local log size, previous startup log
 retained when rotated). Logs may contain Discord IDs and error details: keep them
-private. This restarts a failed bot process; it does not start Windows after a
-shutdown, bypass sleep, or install a Windows service.
+private. Optional automatic startup is now available through Windows Task Scheduler
+or Linux systemd user services; see [Vivi upgrades](VIVI-UPGRADE.md) and [Linux setup](LINUX.md).
+The bot cannot operate while the host is powered off or asleep.

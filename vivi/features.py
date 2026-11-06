@@ -12,6 +12,8 @@ FEATURES = {
     'polls': False, 'giveaways': False, 'suggestions': False, 'birthdays': False,
     'spotlight': False, 'games': False, 'daily_questions': False, 'xp': False,
     'economy': False, 'translation': False, 'ai': False,
+    'music': False, 'voice_rooms': False, 'notifications': False, 'ticket_tools': False,
+    'raid_protection': False, 'mention_protection': False, 'warning_thresholds': False,
 }
 OPTION_TYPES = {
     'welcome_text': str, 'welcome_color': str, 'goodbye_channel': int, 'goodbye_text': str,
@@ -19,6 +21,11 @@ OPTION_TYPES = {
     'blocked_domains': list, 'spam_limit': int, 'dm_explanations': bool,
     'birthday_channel': int, 'daily_channel': int, 'daily_hour': int, 'timezone': str,
     'ai_channels': list, 'ai_limit': int, 'faq': dict,
+    'mention_limit': int, 'raid_limit': int, 'raid_window': int, 'raid_action': str,
+    'raid_channel': int, 'raid_lock_minutes': int, 'warning_count': int,
+    'warning_timeout_minutes': int, 'warning_window_days': int,
+    'ticket_categories': dict, 'voice_lobby': int, 'voice_category': int,
+    'voice_user_limit': int,
 }
 TRIVIA = [
     ('Which planet is the largest?', ['Jupiter','Earth','Mars','Venus'],0),
@@ -61,6 +68,14 @@ def validate_option(key, value):
     if isinstance(value,str) and len(value)>1800: raise ValueError('Setting is too long.')
     if key=='faq':
         if len(value)>50 or any(not isinstance(q,str) or not isinstance(a,str) or not 1<=len(q)<=150 or not 1<=len(a)<=1200 for q,a in value.items()): raise ValueError('Invalid FAQ backup.')
+    limits={'mention_limit':(1,100),'raid_limit':(3,100),'raid_window':(10,300),
+            'raid_lock_minutes':(1,60),'warning_count':(2,20),'warning_timeout_minutes':(1,40320),
+            'warning_window_days':(1,365),'voice_user_limit':(0,99)}
+    if key in limits and not limits[key][0]<=value<=limits[key][1]: raise ValueError(f'{key} must be {limits[key][0]}–{limits[key][1]}.')
+    if key=='raid_action' and value not in {'alert','lockdown'}: raise ValueError('raid_action must be alert or lockdown.')
+    if key in {'raid_channel','voice_lobby','voice_category'} and value<0: raise ValueError('Invalid channel ID.')
+    if key=='ticket_categories':
+        if len(value)>20 or any(not isinstance(k,str) or not 1<=len(k)<=32 or type(v) is not int or v<=0 for k,v in value.items()): raise ValueError('Use a JSON object mapping up to 20 category labels to Discord category IDs.')
     if isinstance(value,list):
         if len(value)>100: raise ValueError('Too many list items.')
         for item in value:
@@ -76,10 +91,16 @@ def validate_option(key, value):
         ZoneInfo(value)
 
 def validate_backup(guild, backup):
-    if not isinstance(backup,dict) or set(backup)!={'version','guild','settings','options','roles'}: raise ValueError('Invalid backup fields.')
-    if backup['version']!=1 or backup['guild']!=guild: raise ValueError('Backup is for a different server or version.')
+    if not isinstance(backup,dict) or set(backup) not in [{'version','guild','settings','options','roles'},{'version','guild','settings','options','roles','subscriptions'}]: raise ValueError('Invalid backup fields.')
+    if backup['version'] not in {1,2} or backup['guild']!=guild: raise ValueError('Backup is for a different server or version.')
     if not isinstance(backup['options'],dict) or len(backup['options'])>100: raise ValueError('Invalid options.')
     for key,value in backup['options'].items(): validate_option(key,value)
+    subscriptions=backup.get('subscriptions',[])
+    if not isinstance(subscriptions,list) or len(subscriptions)>20: raise ValueError('Invalid subscriptions.')
+    from .operations import subscription
+    for item in subscriptions:
+        if not isinstance(item,dict) or set(item)!={'provider','source','channel'} or not isinstance(item['provider'],str) or not isinstance(item['source'],str) or type(item['channel']) is not int or item['channel']<=0: raise ValueError('Invalid subscription.')
+        subscription(item['provider'],item['source'],item['channel'])
     roles=backup['roles']
     if not isinstance(roles,list) or len(roles)>100 or any(type(x) is not int or x<=0 for x in roles): raise ValueError('Invalid roles.')
     s=backup['settings']

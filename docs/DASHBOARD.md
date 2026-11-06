@@ -1,9 +1,10 @@
-# Optional Windows dashboard
+# Vivi dashboard on Windows and Linux
 
 The dashboard is optional. Slash commands work without it or an OAuth secret.
 It runs only on your PC's loopback address and lets current server administrators
-view and change feature switches. Detailed channel/role settings remain available
-through `/admin setting` inside Discord.
+change feature switches and detailed server/channel/role settings, manage FAQs,
+ticket category labels, notification subscriptions, backups, and verification.
+See [the full dashboard guide](VIVI-UPGRADE.md#full-local-dashboard).
 
 1. Open your application at https://discord.com/developers/applications.
 2. Under OAuth2, add the redirect URI exactly:
@@ -20,7 +21,7 @@ through `/admin setting` inside Discord.
    DASHBOARD_REDIRECT_URI=http://127.0.0.1:8765/callback
    ```
 
-5. Restart with `start.bat`. On that same PC, type `http://127.0.0.1:8765` in your
+5. Restart with `start.bat` on Windows or `bash start.sh` on Linux. On that same PC, type `http://127.0.0.1:8765` in your
    browser. Choose **Sign in with Discord** and approve the `identify` and `guilds`
    scopes. This does not ask for your Discord password inside the bot's own page.
 6. Choose a server you own or administer where this bot is installed, and enable
@@ -28,8 +29,9 @@ through `/admin setting` inside Discord.
 7. Use **Sign out** when done. Sessions expire within one hour and are lost when
    the bot restarts. Set DASHBOARD_ENABLED=false and restart to disable the listener.
 
-The listener refuses external interfaces. Do not forward its port or try to publish
-it through a tunnel. Public hosting would need a separate HTTPS deployment design.
+The listener refuses external interfaces. Keep it private; do not publish it through
+a public port forward or tunnel. An authenticated SSH local forward for a headless
+Linux host is described in [LINUX.md](LINUX.md). Public hosting would need a separate HTTPS design.
 For a different port, change both the registered Discord redirect and .env to the
 same loopback URL, including `/callback`. If using `localhost` instead of
 `127.0.0.1`, use it consistently in the browser and registered redirect.
