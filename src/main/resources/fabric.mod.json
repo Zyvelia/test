@@ -1,7 +1,0 @@
-{
- "schemaVersion":1,"id":"aurora","version":"0.1.0","name":"Aurora Client",
- "description":"A translucent modular client for private Minecraft servers.",
- "environment":"client","license":"MIT",
- "entrypoints":{"client":["dev.aurora.AuroraClient"]},
- "depends":{"fabricloader":">=0.16.0","minecraft":"~1.21.1","java":">=21","fabric-api":"*"}
-}

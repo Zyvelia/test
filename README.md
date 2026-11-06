@@ -1,86 +1,157 @@
-# Aurora Client
+# Aurora Discord Bot
 
-Fabric client mod for Minecraft Java Edition **1.21.1**, using **Java 21**.
-This initial source release has not yet compiled or been tested in-game in the
-cloud workspace because its network blocks Fabric's Maven repository.
-GitHub Actions builds the client on every push; check its result before installing.
+A Discord server bot you can run on your **Windows PC** for free. Includes welcome
+messages, self-service role buttons, staff moderation, and private support tickets.
+This replaces the Minecraft project; previous versions remain in Git history.
 
-## Download on Windows
+## What it does
 
-For source code: click **Code → Download ZIP** on this repository and extract it.
-For the mod JAR: open **Actions → Build Aurora Client**, open a successful run,
-and download **Aurora-Client-Minecraft-1.21.1** from Artifacts at the bottom.
-You must be signed in to GitHub to download Actions artifacts. Extract the ZIP
-and copy the JAR into your Fabric 1.21.1 profile's `mods` directory alongside
-Fabric API. A failed build has no installable artifact; check the build log.
+- Welcomes new members in your chosen channel.
+- Lets members add/remove safe roles using persistent buttons.
+- Records warnings and offers timeout, untimeout, kick, ban, and message cleanup.
+- Creates one private support ticket per member. The member, support role, bot,
+  and server administrators can see it.
+- Confirms ticket closure, saves a text transcript, and deletes the ticket channel.
+- Remembers server settings, warnings, roles, and tickets after restarting.
 
-## Build and run
+There is no AI API, paid subscription, or port forwarding required. Keep your PC
+awake, online, and the bot terminal open. Closing it, shutting down, or sleeping
+stops the bot. Run only **one copy** for a given bot token/database.
 
-Install Java 21, then run from this directory:
+## 1. Download and prepare (Windows)
 
-```sh
-./gradlew build
-./gradlew runClient
+1. On this repository, select **Code → Download ZIP**.
+2. Right-click the downloaded ZIP → **Extract All**. Open the extracted folder.
+3. Install **Python 3.11 or newer** from https://www.python.org/downloads/windows/.
+   Include the Python launcher (`py`) during installation. Python 3.12 is tested.
+4. Double-click **setup.bat**. It creates an isolated Python environment, installs
+   dependencies, and opens your private `.env` configuration in Notepad.
+
+Always extract the ZIP first; do not launch the scripts from inside the ZIP.
+You can rerun setup.bat to refresh dependencies; it preserves an existing .env.
+
+## 2. Create your Discord bot
+
+1. Open https://discord.com/developers/applications and choose **New Application**.
+   Name it whatever you like, such as Aurora.
+2. Open **Bot**. Use **Reset Token** to generate its token if needed. Paste the
+   token only into the local `.env` file after `DISCORD_TOKEN=`. Save the file.
+   **Never send the token in chat, upload .env, or show it in a screenshot.**
+3. On that same Bot page, enable **Server Members Intent** and
+   **Message Content Intent**. Member events power welcome messages; message
+   content is used for ticket transcripts, not for prefix commands.
+4. In **OAuth2 → URL Generator**, select scopes **bot** and **applications.commands**.
+5. Select bot permissions: **View Channels**, **Send Messages**, **Read Message
+   History**, **Embed Links**, **Attach Files**, **Manage Roles**, **Manage Channels**,
+   **Manage Messages**, **Moderate Members**, **Kick Members**, and **Ban Members**.
+   Administrator permission is not required.
+6. Open the generated invite URL, choose your server, and authorize it. You need
+   permission to manage that server.
+7. In Discord **Server Settings → Roles**, move the bot's role above roles it will
+   assign and members it will moderate. Keep human administrator roles above it.
+
+`.env` example (use your real token locally):
+
+```dotenv
+DISCORD_TOKEN=paste_your_token_here
+DEV_GUILD_ID=
 ```
 
-Windows: use `gradlew.bat build` and `gradlew.bat runClient` instead.
-After a successful build, install Fabric Loader for Minecraft 1.21.1 and place
-`build/libs/aurora-client-0.1.0.jar` plus Fabric API 0.102.1+1.21.1 in the profile's
-`mods` directory. Do not install the `-sources.jar` as a mod.
+Optional: enable Developer Mode in Discord, right-click your server → Copy Server
+ID, and place it after `DEV_GUILD_ID=`. This registers commands immediately for
+that test server. Leave it blank for global commands, which can take time to show.
+If you change between test-server and global registration, Discord may temporarily
+show duplicate or stale commands; keep one mode for normal use.
 
-Gradle verifies its downloaded distribution against the pinned official SHA-256.
-For cloud environments whose network requires a proxy, use `python3 tools/cloud-build.py`.
-This preserves the supplied proxy and Java TLS trust; no verification is disabled.
-Required hosts include maven.fabricmc.net, libraries.minecraft.net,
-piston-meta.mojang.com, piston-data.mojang.com, resources.download.minecraft.net,
-Maven Central, and Gradle's distribution hosts.
+## 3. Start and configure
 
-## Controls and appearance
+1. Double-click **start.bat**. Wait for `Connected as ...` in the terminal.
+2. In your server, create a **Support Staff** role, a **Support Tickets** category,
+   a welcome text channel, and a private staff-log text channel.
+3. In the log channel permissions, deny **View Channel** for `@everyone`; allow
+   only your trusted staff and the bot. Check other role overrides too. Transcripts
+   may contain personal messages, so keep this channel private.
+4. Give the bot View Channel and Manage Channels in the ticket category; also let
+   it send messages, read history, embed links, and attach files in its channels.
+5. As a server administrator, run:
+   `/setup welcome:#welcome ticket_category:Support Tickets staff:@Support Staff logs:#staff-log`
+   Choose the actual channels and role from Discord's menus.
+6. Run `/ticket_panel channel:#support` to post the support button.
+7. Create an ordinary member role below the bot's role, then run
+   `/role_button channel:#choose-roles role:@Gaming label:Gaming`.
+8. Test `/ping`, click a role button, open a ticket, and close it. Also test joining
+   with another account to check the welcome message.
 
-Press **Right Shift** to open the translucent Aurora panel. It is also rebindable
-in Minecraft's Controls menu. Select a category, search module names, and click
-rows to toggle. Hover over any row for its description. **Disable all** switches
-off every module. Escape or Done closes the panel. The game continues running
-while the panel is open; combat/movement automation pauses while any screen is open.
-All modules default to off. Settings persist in `config/aurora.json`.
+Role buttons refuse managed roles, @everyone, the configured support role, and
+roles with moderation/management permissions. Rechecking at click time prevents a
+previously safe role from granting those permissions after an admin changes it.
+Do not use a self-service role to grant access to sensitive private channels.
 
-## Implemented modules
+## Commands
 
-| Category | Module | Behavior |
+| Command | Required member permission | Purpose |
 |---|---|---|
-| Movement | Sprint | Sprint when moving forward and hunger allows |
-| Movement | Speed | Scale ground horizontal velocity by 1.35 |
-| Movement | Flight | Directional flight; jump up, sneak down |
-| Movement | Auto jump | Jump when walking into a block |
-| Movement | Safe walk | Sneak when approaching a ledge |
-| Combat | Aim assist | Gently turn toward a nearby visible living target while holding attack |
-| Combat | Trigger attack | Attack the crosshair target when cooldown is ready |
-| Combat | Auto attack | Attack the nearest visible living entity within three blocks |
-| Player | Auto tool | Select the fastest hotbar mining tool for the targeted block |
-| Visual | Fullbright | Local night vision |
-| Visual | Status HUD | Coordinates, speed, FPS, and enabled module list |
+| `/ping`, `/help` | None | Status and help |
+| `/setup` | Administrator | Save this server's channels/support role |
+| `/role_button` | Administrator | Post an opt-in role button |
+| `/ticket_panel` | Administrator | Post a private-ticket button |
+| `/warn member reason` | Moderate Members | Record a warning |
+| `/warnings member` | Moderate Members | Show the latest ten warnings privately |
+| `/timeout member minutes reason` | Moderate Members | Timeout for 1 minute to 28 days |
+| `/untimeout member` | Moderate Members | Remove a timeout |
+| `/kick member reason` | Kick Members | Remove a member |
+| `/ban member reason` | Ban Members | Ban without erasing message history |
+| `/purge count` | Manage Messages | Delete up to 100 recent messages |
 
-Combat targets include players and mobs, excluding teammates, spectators, and
-occluded targets. Combat respects the vanilla attack cooldown and pauses while
-using an item. Server authority may reject movement changes. Fullbright uses a
-client-side effect and may conflict with server-managed night vision. Sneak
-restoration currently assumes the default Left Shift sneak binding.
+Moderation also checks the human moderator's and bot's role hierarchy. The server
+owner, bot itself, moderator themselves, and equal/higher roles are protected.
+Discord still enforces its own permissions, including timeout restrictions.
+Warnings are stored and logged; they are not automatically sent to the member.
 
-This is a focused initial module set, not every feature of every hacked client.
-It contains no anti-cheat bypass, packet exploits, X-ray, or configurable per-module
-keybinds. Movement/combat settings currently use fixed values.
+Only a ticket's creator, configured support staff, or someone with Manage Channels
+can close it. Closing requires a second confirmation. It saves the **most recent
+1,000 messages** in chronological order to `data/transcripts/CHANNEL_ID.txt` and
+attempts to upload a copy to staff logs before deleting the channel. If local
+transcript creation fails, the channel stays open. A failed log upload still
+leaves the local file. Attachments are saved as URLs, not downloaded files;
+Discord attachment links can expire. Embeds, edits, deleted messages, and threads
+are not archived. This is a basic support transcript, not a complete server backup.
 
-## Validation checklist
+## Local files and backups
 
-Compilation and these game checks remain required once dependency access works:
+- `.env`: private bot token; excluded from Git.
+- `.venv/`: isolated installed dependencies; excluded from Git.
+- `data/aurora.sqlite3`: settings, warnings, role registrations, and open tickets.
+- `data/transcripts/`: saved text transcripts; excluded from Git.
 
-- `./gradlew build` produces the remapped installable JAR.
-- `./gradlew runClient` opens Minecraft with Aurora loaded.
-- In a disposable single-player world or private server, open Right Shift,
-  check hover descriptions, category search, and the translucent world background.
-- Toggle each module individually, then Disable all. Verify movement and combat
-  stop when disabled and while menus are open.
-- Restart Minecraft and confirm saved toggles restore.
-- Resize the window and check row layout and tooltips at different GUI scales.
+Stop the bot before backing up `data/`. Keep the backup and .env private. Delete
+old transcripts manually according to your server's retention needs. This bot
+stores member IDs, moderation reasons, and ticket message text; tell members how
+support transcripts are retained. The database is not encrypted on disk.
 
-The project is independent of the previously removed Flutter repository.
+## Troubleshooting
+
+- **Token rejected:** reset it in Developer Portal → Bot and update .env.
+- **Privileged intents error:** enable both intents listed above, then restart.
+- **Commands missing:** check invite scopes, restart Discord, or use DEV_GUILD_ID.
+- **Missing permissions / role updates fail:** check channel overrides and ensure
+  the bot role is above the target role. Discord administrators still need a bot
+  with sufficient role hierarchy.
+- **Ticket category or staff missing:** rerun /setup with existing resources.
+- **Bot goes offline:** leave the terminal open and disable PC sleep while hosting.
+- **Transcript upload failed:** check Attach Files and private log channel access;
+  find the local transcript under data/transcripts.
+
+## Development and validation
+
+```sh
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+python -m aurora.bot
+```
+
+Automated tests exercise database persistence, ticket concurrency/privacy, cleanup
+on failures, permission policy, and persistent component registration without
+connecting to Discord. GitHub Actions runs the suite on Linux and Windows.
+Actual Discord login, live channel permissions, welcome events, and the Windows
+batch launchers still need testing on your server/PC. No bot token is included.

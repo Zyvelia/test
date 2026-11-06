@@ -1,0 +1,415 @@
+import asyncio
+import datetime
+import io
+import logging
+import os
+from pathlib import Path
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+from dotenv import load_dotenv
+
+from .storage import Store
+from .policy import safe_self_role, may_moderate, may_close
+
+ROOT = Path(__file__).resolve().parents[1]
+LOG = logging.getLogger('aurora')
+
+
+async def reply(interaction, text):
+    if interaction.response.is_done():
+        await interaction.followup.send(text, ephemeral=True)
+    else:
+        await interaction.response.send_message(text, ephemeral=True)
+
+
+async def audit(bot, guild, text, **kwargs):
+    config = bot.store.settings(guild.id)
+    channel = guild.get_channel(config['logs']) if config else None
+    if channel:
+        try:
+            await channel.send(text, allowed_mentions=discord.AllowedMentions.none(), **kwargs)
+        except discord.HTTPException:
+            LOG.warning('Could not write moderation log in guild %s', guild.id)
+
+
+class RoleView(discord.ui.View):
+    def __init__(self, bot, guild_id, role_id, label='Toggle role'):
+        super().__init__(timeout=None)
+        self.bot, self.guild_id, self.role_id = bot, guild_id, role_id
+        button = discord.ui.Button(label=label[:80], style=discord.ButtonStyle.secondary,
+                                   custom_id=f'aurora:role:{guild_id}:{role_id}')
+        button.callback = self.toggle
+        self.add_item(button)
+
+    async def toggle(self, i):
+        if not i.guild or i.guild.id != self.guild_id:
+            return await reply(i, 'This role button is unavailable here.')
+        role = i.guild.get_role(self.role_id)
+        config = self.bot.store.settings(i.guild.id)
+        if (not config or not role or role.id == config['staff']
+                or not safe_self_role(role, i.guild.me)):
+            return await reply(i, 'This role is unavailable or no longer safe to self-assign. Ask an admin.')
+        await i.response.defer(ephemeral=True)
+        key = (i.guild.id, i.user.id, role.id)
+        async with self.bot.role_locks.setdefault(key, asyncio.Lock()):
+            try:
+                member = await i.guild.fetch_member(i.user.id)
+                if role in member.roles:
+                    await member.remove_roles(role, reason='Aurora self-service role')
+                    await reply(i, f'Removed {role.name}.')
+                else:
+                    await member.add_roles(role, reason='Aurora self-service role')
+                    await reply(i, f'Added {role.name}.')
+            except discord.HTTPException:
+                await reply(i, 'I could not update the role. Check Manage Roles and my role position.')
+
+
+class OpenTicketView(discord.ui.View):
+    def __init__(self, bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(label='Open a support ticket', style=discord.ButtonStyle.primary,
+                       custom_id='aurora:ticket:open')
+    async def open_ticket(self, i, button):
+        if not i.guild:
+            return await reply(i, 'Tickets work inside the server.')
+        config = self.bot.store.settings(i.guild.id)
+        if not config:
+            return await reply(i, 'An administrator must run /setup first.')
+        await i.response.defer(ephemeral=True)
+        async with self.bot.ticket_lock:
+            old = self.bot.store.ticket_for_user(i.guild.id, i.user.id)
+            if old:
+                try:
+                    channel = await i.guild.fetch_channel(old['channel'])
+                    return await reply(i, f'You already have a ticket: {channel.mention}')
+                except discord.NotFound:
+                    self.bot.store.remove_ticket(old['channel'])
+                except discord.HTTPException:
+                    return await reply(i, 'Could not check your existing ticket. Try again shortly.')
+            category = i.guild.get_channel(config['category'])
+            staff = i.guild.get_role(config['staff'])
+            if not isinstance(category, discord.CategoryChannel) or not staff:
+                return await reply(i, 'Ticket category or staff role is missing. Ask an admin to rerun /setup.')
+            overwrites = {
+                i.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                i.user: discord.PermissionOverwrite(view_channel=True, send_messages=True,
+                            read_message_history=True, attach_files=True),
+                staff: discord.PermissionOverwrite(view_channel=True, send_messages=True,
+                            read_message_history=True),
+                i.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True,
+                            read_message_history=True, manage_channels=True, attach_files=True),
+            }
+            channel = None
+            recorded = False
+            try:
+                channel = await i.guild.create_text_channel(f'ticket-{i.user.id}',
+                    category=category, overwrites=overwrites, reason='Aurora support ticket')
+                self.bot.store.add_ticket(i.guild.id, i.user.id, channel.id)
+                recorded = True
+                await channel.send(f'Welcome {i.user.mention}! Describe your issue below. '
+                    'Server administrators and the configured support staff can see this channel. '
+                    'Closing saves the most recent 1,000 messages, then deletes the channel.',
+                    view=CloseTicketView(self.bot),
+                    allowed_mentions=discord.AllowedMentions(users=[i.user], roles=False, everyone=False))
+            except Exception:
+                LOG.exception('Ticket creation failed')
+                if channel:
+                    try:
+                        await channel.delete(reason='Incomplete Aurora ticket cleanup')
+                        if recorded:
+                            self.bot.store.remove_ticket(channel.id)
+                    except discord.HTTPException:
+                        LOG.warning('Incomplete ticket channel needs cleanup: %s', channel.id)
+                return await reply(i, 'Ticket creation failed. Ask staff to check my channel permissions.')
+            await reply(i, f'Your private ticket is ready: {channel.mention}')
+            await audit(self.bot, i.guild, f'Ticket opened by {i.user} ({i.user.id}): {channel.mention}')
+
+
+class CloseTicketView(discord.ui.View):
+    def __init__(self, bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(label='Close ticket', style=discord.ButtonStyle.danger,
+                       custom_id='aurora:ticket:close')
+    async def close_ticket(self, i, button):
+        ticket = self.bot.store.ticket_for_channel(i.channel_id)
+        config = self.bot.store.settings(i.guild_id)
+        if not ticket or not config or not may_close(i.user, ticket, config['staff']):
+            return await reply(i, 'Only the ticket owner or support staff can close this ticket.')
+        await i.response.send_message('Save a transcript and permanently delete this ticket channel?',
+                                     view=ConfirmClose(self.bot, i.user.id), ephemeral=True)
+
+
+class ConfirmClose(discord.ui.View):
+    def __init__(self, bot, user_id):
+        super().__init__(timeout=60)
+        self.bot, self.user_id = bot, user_id
+
+    @discord.ui.button(label='Save transcript and close', style=discord.ButtonStyle.danger)
+    async def confirm(self, i, button):
+        if i.user.id != self.user_id:
+            return await reply(i, 'This confirmation belongs to another user.')
+        await i.response.defer(ephemeral=True)
+        async with self.bot.ticket_lock:
+            ticket = self.bot.store.ticket_for_channel(i.channel_id)
+            config = self.bot.store.settings(i.guild_id)
+            if not ticket or not config or not may_close(i.user, ticket, config['staff']):
+                return await reply(i, 'You cannot close this ticket now.')
+            try:
+                # Fetch newest messages, then put the limited transcript in chronological order.
+                messages = [m async for m in i.channel.history(limit=1000)]
+                lines = [f'Ticket {i.channel_id}; owner {ticket["user"]}; closed by {i.user.id}',
+                         'Most recent 1,000 messages. Attachments are links, not downloaded copies.']
+                for m in reversed(messages):
+                    lines.append(f'[{m.created_at.isoformat()}] {m.author} ({m.author.id}): {m.content}')
+                    lines.extend(a.url for a in m.attachments)
+                data = '\n'.join(lines).encode('utf-8')
+                folder = ROOT / 'data' / 'transcripts'
+                folder.mkdir(parents=True, exist_ok=True)
+                path = folder / f'{i.channel_id}.txt'
+                path.write_bytes(data)
+                # A local transcript is required; Discord upload failure does not erase it.
+                await audit(self.bot, i.guild, f'Ticket {i.channel_id} closed by {i.user} ({i.user.id}).',
+                            file=discord.File(io.BytesIO(data), filename=path.name))
+                await i.channel.delete(reason=f'Aurora ticket closed by {i.user.id}')
+                self.bot.store.remove_ticket(i.channel_id)
+            except Exception:
+                LOG.exception('Ticket close failed')
+                return await reply(i, 'Could not finish closing. The ticket record is retained; ask staff to check logs.')
+            self.stop()
+            await reply(i, 'Ticket closed. Transcript saved on the host PC.')
+
+
+class AuroraBot(commands.Bot):
+    def __init__(self, store):
+        intents = discord.Intents.default()
+        intents.members = True
+        intents.message_content = True  # Needed only for readable ticket transcripts.
+        super().__init__(command_prefix=commands.when_mentioned, intents=intents,
+                         allowed_mentions=discord.AllowedMentions.none())
+        self.store = store
+        self.ticket_lock = asyncio.Lock()
+        self.role_locks = {}
+
+    async def setup_hook(self):
+        self.add_view(OpenTicketView(self))
+        self.add_view(CloseTicketView(self))
+        for record in self.store.roles():
+            self.add_view(RoleView(self, record['guild'], record['role']))
+        register_commands(self)
+        dev = os.getenv('DEV_GUILD_ID', '').strip()
+        if dev:
+            guild = discord.Object(id=int(dev))
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
+        else:
+            synced = await self.tree.sync()
+        LOG.info('Registered %s slash commands', len(synced))
+
+    async def on_ready(self):
+        LOG.info('Connected as %s. Keep this window open.', self.user)
+
+    async def on_member_join(self, member):
+        config = self.store.settings(member.guild.id)
+        channel = member.guild.get_channel(config['welcome']) if config else None
+        if channel:
+            try:
+                await channel.send(f'Welcome {member.mention} to **{discord.utils.escape_markdown(member.guild.name)}**! '
+                                   'Please read the server rules and choose your roles.',
+                                   allowed_mentions=discord.AllowedMentions(users=[member], roles=False, everyone=False))
+            except discord.HTTPException:
+                LOG.warning('Welcome message failed in guild %s', member.guild.id)
+
+
+def register_commands(bot):
+    tree = bot.tree
+
+    @tree.command(name='ping', description='Check whether the bot is online.')
+    async def ping(i: discord.Interaction):
+        await reply(i, f'Online! Gateway latency: {bot.latency * 1000:.0f} ms.')
+
+    @tree.command(name='help', description='See setup, member, and moderator commands.')
+    async def help_command(i: discord.Interaction):
+        await reply(i, '**Aurora**\nMembers: /ping, role buttons, ticket buttons.\n'
+                    'Admins: /setup, /role_button, /ticket_panel.\n'
+                    'Moderators: /warn, /warnings, /timeout, /untimeout, /kick, /ban, /purge.\n'
+                    'Tickets and role buttons survive bot restarts. The host PC must stay awake.')
+
+    @tree.command(name='setup', description='Configure welcome, support, and private staff logging channels.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    async def setup(i: discord.Interaction, welcome: discord.TextChannel,
+                    ticket_category: discord.CategoryChannel, staff: discord.Role,
+                    logs: discord.TextChannel):
+        if staff.is_default() or staff.managed:
+            return await reply(i, 'Choose a dedicated human support role, not @everyone or a managed role.')
+        if logs.permissions_for(i.guild.default_role).view_channel:
+            return await reply(i, 'Choose a private log channel: deny View Channel for @everyone first.')
+        for channel in (welcome, logs):
+            perms = channel.permissions_for(i.guild.me)
+            if not (perms.view_channel and perms.send_messages):
+                return await reply(i, f'I need View Channel and Send Messages in {channel.mention}.')
+        perms = ticket_category.permissions_for(i.guild.me)
+        if not (perms.view_channel and perms.manage_channels):
+            return await reply(i, 'I need View Channel and Manage Channels in the ticket category.')
+        if not logs.permissions_for(i.guild.me).attach_files:
+            return await reply(i, 'I need Attach Files in the log channel for transcripts.')
+        bot.store.configure(i.guild.id, welcome.id, ticket_category.id, staff.id, logs.id)
+        await reply(i, 'Configuration saved. Run /ticket_panel and /role_button where you want member buttons.')
+
+    @tree.command(name='role_button', description='Post a self-service button for a safe, non-staff role.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    async def role_button(i: discord.Interaction, channel: discord.TextChannel,
+                          role: discord.Role, label: app_commands.Range[str, 1, 80]):
+        config = bot.store.settings(i.guild.id)
+        if (not config or role.id == config['staff'] or not safe_self_role(role, i.guild.me)):
+            return await reply(i, 'Run /setup first and choose a non-staff role with no moderation or management permissions below my role.')
+        await i.response.defer(ephemeral=True)
+        bot.store.add_role(i.guild.id, role.id)
+        view = RoleView(bot, i.guild.id, role.id, label)
+        await channel.send(f'Choose your **{discord.utils.escape_markdown(role.name)}** role:', view=view)
+        await reply(i, f'Role button posted in {channel.mention}.')
+
+    @tree.command(name='ticket_panel', description='Post a persistent button to open private support tickets.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.checks.has_permissions(administrator=True)
+    async def ticket_panel(i: discord.Interaction, channel: discord.TextChannel):
+        if not bot.store.settings(i.guild.id):
+            return await reply(i, 'Run /setup first.')
+        await i.response.defer(ephemeral=True)
+        embed = discord.Embed(title='Need a hand?', description='Open a private ticket for the support team. One open ticket per member.', color=0x87CEEB)
+        await channel.send(embed=embed, view=OpenTicketView(bot))
+        await reply(i, f'Ticket panel posted in {channel.mention}.')
+
+    async def guard(i, member):
+        if not may_moderate(i.user, member, i.guild.me, i.guild.owner_id):
+            await reply(i, 'You or I lack the role hierarchy needed to moderate this member.')
+            return False
+        return True
+
+    @tree.command(name='warn', description='Record a persistent warning for a member.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
+    async def warn(i: discord.Interaction, member: discord.Member, reason: app_commands.Range[str, 1, 500]):
+        if not await guard(i, member): return
+        ident = bot.store.warn(i.guild.id, member.id, i.user.id, reason)
+        await reply(i, f'Warning #{ident} recorded for {member}.')
+        await audit(bot, i.guild, f'Warning #{ident}: {member} ({member.id}), moderator {i.user.id}: {reason}')
+
+    @tree.command(name='warnings', description='Show the most recent ten warnings for a member.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
+    async def warnings(i: discord.Interaction, member: discord.Member):
+        rows = bot.store.warnings(i.guild.id, member.id)
+        text = '\n'.join(f'#{r["id"]} · {r["created"]} · {r["reason"][:120]}' for r in rows)
+        await reply(i, text or 'No warnings recorded.')
+
+    @tree.command(name='timeout', description='Temporarily prevent a member from talking, up to 28 days.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.checks.bot_has_permissions(moderate_members=True)
+    async def timeout(i: discord.Interaction, member: discord.Member,
+                      minutes: app_commands.Range[int, 1, 40320], reason: app_commands.Range[str, 1, 500]):
+        if not await guard(i, member): return
+        await i.response.defer(ephemeral=True)
+        await member.timeout(datetime.timedelta(minutes=minutes), reason=f'{i.user.id}: {reason}')
+        await reply(i, f'Timed out {member} for {minutes} minutes.')
+        await audit(bot, i.guild, f'Timeout: {member.id}, {minutes} minutes, moderator {i.user.id}: {reason}')
+
+    @tree.command(name='untimeout', description='Remove an active member timeout.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(moderate_members=True)
+    @app_commands.checks.has_permissions(moderate_members=True)
+    @app_commands.checks.bot_has_permissions(moderate_members=True)
+    async def untimeout(i: discord.Interaction, member: discord.Member):
+        if not await guard(i, member): return
+        await i.response.defer(ephemeral=True)
+        await member.timeout(None, reason=f'Aurora timeout removed by {i.user.id}')
+        await reply(i, f'Removed timeout for {member}.')
+        await audit(bot, i.guild, f'Timeout removed for {member.id} by {i.user.id}.')
+
+    @tree.command(name='kick', description='Remove a member from this server.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(kick_members=True)
+    @app_commands.checks.has_permissions(kick_members=True)
+    @app_commands.checks.bot_has_permissions(kick_members=True)
+    async def kick(i: discord.Interaction, member: discord.Member, reason: app_commands.Range[str, 1, 500]):
+        if not await guard(i, member): return
+        await i.response.defer(ephemeral=True)
+        await member.kick(reason=f'{i.user.id}: {reason}')
+        await reply(i, f'Kicked {member}.')
+        await audit(bot, i.guild, f'Kick: {member.id} by {i.user.id}: {reason}')
+
+    @tree.command(name='ban', description='Ban a current member without deleting their message history.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(ban_members=True)
+    @app_commands.checks.has_permissions(ban_members=True)
+    @app_commands.checks.bot_has_permissions(ban_members=True)
+    async def ban(i: discord.Interaction, member: discord.Member, reason: app_commands.Range[str, 1, 500]):
+        if not await guard(i, member): return
+        await i.response.defer(ephemeral=True)
+        await member.ban(reason=f'{i.user.id}: {reason}', delete_message_seconds=0)
+        await reply(i, f'Banned {member}.')
+        await audit(bot, i.guild, f'Ban: {member.id} by {i.user.id}: {reason}')
+
+    @tree.command(name='purge', description='Delete up to 100 recent messages in this channel.')
+    @app_commands.guild_only()
+    @app_commands.default_permissions(manage_messages=True)
+    @app_commands.checks.has_permissions(manage_messages=True)
+    @app_commands.checks.bot_has_permissions(manage_messages=True, read_message_history=True)
+    async def purge(i: discord.Interaction, count: app_commands.Range[int, 1, 100]):
+        if not isinstance(i.channel, discord.TextChannel):
+            return await reply(i, 'Use purge in a server text channel.')
+        await i.response.defer(ephemeral=True)
+        deleted = await i.channel.purge(limit=count, check=lambda m: (discord.utils.utcnow()-m.created_at).days<14)
+        await reply(i, f'Deleted {len(deleted)} messages. Messages older than 14 days are left alone.')
+        await audit(bot, i.guild, f'Purge: {len(deleted)} messages in {i.channel.mention} by {i.user.id}.')
+
+    @tree.error
+    async def errors(i, error):
+        if isinstance(error, app_commands.MissingPermissions):
+            return await reply(i, 'You do not have permission to use this command.')
+        if isinstance(error, app_commands.BotMissingPermissions):
+            return await reply(i, 'I am missing permissions: ' + ', '.join(error.missing_permissions))
+        original = getattr(error, 'original', error)
+        if isinstance(original, discord.Forbidden):
+            return await reply(i, 'Discord denied that action. Check my channel permissions and role position.')
+        LOG.error('Command failed', exc_info=(type(original), original, original.__traceback__))
+        await reply(i, 'That action failed. Check the bot terminal for details, then retry.')
+
+
+def main():
+    load_dotenv(ROOT / '.env')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+    token = os.getenv('DISCORD_TOKEN', '').strip()
+    if not token or token == 'paste_your_token_here':
+        raise SystemExit('Add DISCORD_TOKEN to .env first. Never share the token in chat or commit it.')
+    dev = os.getenv('DEV_GUILD_ID', '').strip()
+    if dev and (not dev.isdigit() or int(dev) <= 0):
+        raise SystemExit('DEV_GUILD_ID must be blank or a positive Discord server ID.')
+    store = Store(ROOT / 'data' / 'aurora.sqlite3')
+    bot = AuroraBot(store)
+    try:
+        bot.run(token, log_handler=None)
+    except discord.PrivilegedIntentsRequired:
+        raise SystemExit('Enable Server Members Intent and Message Content Intent in the Discord Developer Portal, then restart.')
+    except discord.LoginFailure:
+        raise SystemExit('Discord rejected DISCORD_TOKEN. Reset it in the Developer Portal and update .env.')
+    finally:
+        store.close()
+
+
+if __name__ == '__main__':
+    main()
