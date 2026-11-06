@@ -17,7 +17,10 @@ from .settings import DEFAULTS, parse_value, validate_resources, validate_setup
 
 DISCORD='https://discord.com/api/v10'
 
-class Dashboard:
+from .dashboard_tools import DashboardTools
+from .i18n import UI_LANGUAGE,localize_html,tr
+
+class Dashboard(DashboardTools):
     def __init__(self,service):
         self.service=service; self.sessions={}; self.states={}; self.runner=None
         self.client=os.getenv('DISCORD_CLIENT_ID','').strip()
@@ -28,6 +31,9 @@ class Dashboard:
                 or parsed.path!='/callback' or parsed.query or parsed.fragment or parsed.username is not None):
             raise ValueError('Dashboard redirect must be http://127.0.0.1:PORT/callback or localhost equivalent.')
         self.host=parsed.hostname; self.port=parsed.port or 80
+        self.bind_host=os.getenv('DASHBOARD_BIND_HOST',self.host)
+        if self.bind_host not in {'127.0.0.1','localhost'} and not (self.bind_host=='0.0.0.0' and os.getenv('VIVI_CONTAINER')=='1'):
+            raise ValueError('An external dashboard bind is allowed only in explicit container mode.')
         self.app=web.Application(client_max_size=262144,middlewares=[self.security])
         self.app.add_routes([web.get('/',self.index),web.get('/login',self.login),web.get('/callback',self.callback),
                              web.post('/feature',self.feature),web.post('/logout',self.logout),
@@ -35,7 +41,10 @@ class Dashboard:
                              web.post('/faq',self.faq),web.post('/ticket-category',self.ticket_category),
                              web.post('/subscription',self.subscription),web.post('/subscription-test',self.subscription_test),
                              web.get('/backup',self.backup),web.post('/restore',self.restore),
-                             web.post('/verify',self.verify)])
+                             web.post('/verify',self.verify),web.post('/preview',self.preview),
+                             web.get('/revision',self.revision),web.post('/rollback',self.rollback),
+                             web.post('/backup-now',self.backup_now),web.get('/scheduled-backup',self.scheduled_backup),
+                             web.post('/aliases',self.aliases),web.get('/health',self.health)])
 
     @web.middleware
     async def security(self,request,handler):
@@ -43,10 +52,16 @@ class Dashboard:
         expected=f'{self.host}:{self.port}'
         if request.host not in {expected, self.host if self.port==80 else expected}:
             raise web.HTTPForbidden(text='Unexpected Host header.')
-        try: response=await handler(request)
-        except web.HTTPException as response:
-            self.headers(response); raise
-        self.headers(response); return response
+        locale_token=UI_LANGUAGE.set('en')
+        actor_token=self.service.store.actor.set('dashboard')
+        try:
+            try: response=await handler(request)
+            except web.HTTPException as response:
+                self.headers(response);raise
+            self.headers(response);return response
+        finally:
+            UI_LANGUAGE.reset(locale_token)
+            self.service.store.actor.reset(actor_token)
 
     @staticmethod
     def headers(response):
@@ -73,16 +88,19 @@ class Dashboard:
         guilds=await self.api_guilds(session)
         if str(guild) not in guilds or self.service.bot.get_guild(guild) is None:
             raise web.HTTPForbidden(text='You must be a current server owner/administrator and this bot must be installed.')
+        UI_LANGUAGE.set(self.service.store.option(guild,'language','en'))
+        self.service.store.actor.set('dashboard:'+str(session.get('user_id','admin')))
         return session
 
     def page(self,content):
+        content=localize_html(UI_LANGUAGE.get(),content)
         return web.Response(content_type='text/html',text='<!doctype html><html><head><meta charset="utf-8"><title>Vivi Dashboard</title>'
             '<style>body{font:16px system-ui;background:#111827;color:#e5e7eb;max-width:850px;margin:40px auto;padding:20px}'
             'a{color:#87ceeb}form{margin:12px 0;padding:14px;background:#1f2937;border-radius:12px}'
             'button{padding:8px 14px;border:0;border-radius:8px;cursor:pointer}small{color:#aab6c9}'
             'input,select,textarea{box-sizing:border-box;max-width:100%;padding:9px;margin:5px;background:#111827;color:#fff;border:1px solid #6b7280;border-radius:6px}'
             'textarea{width:95%;min-height:70px}summary{font-size:1.3em;cursor:pointer;padding:15px}label{display:block}table{width:100%;text-align:left}td{padding:7px}</style></head><body>'
-            '<h1>Vivi · Server Dashboard</h1>'+content+'</body></html>')
+            '<h1>Vivi · '+html.escape(tr(UI_LANGUAGE.get(),'Server Dashboard'))+'</h1>'+content+'</body></html>')
 
     async def index(self,request):
         if not request.cookies.get('vivi_session'): return self.page('<p><a href="/login">Sign in with Discord</a></p><p>Local dashboard: server administrators only.</p>')
@@ -94,6 +112,7 @@ class Dashboard:
         try: guild=int(request.query['guild'])
         except ValueError: raise web.HTTPBadRequest(text='Invalid server ID.')
         session=await self.authorize(request,guild)
+        UI_LANGUAGE.set(self.service.store.option(guild,'language','en'))
         name=html.escape(self.service.bot.get_guild(guild).name)
         forms=[]
         for feature in FEATURES:
@@ -133,7 +152,11 @@ class Dashboard:
             if response.status!=200: raise web.HTTPUnauthorized(text='Discord rejected this login. Start again.')
             data=await response.json()
         sid=secrets.token_urlsafe(32)
-        self.sessions[sid]={'token':data['access_token'],'csrf':secrets.token_urlsafe(32),
+        identity={}
+        async with self.service.session.get(DISCORD+'/users/@me',headers={'Authorization':'Bearer '+data['access_token']},allow_redirects=False) as who:
+            if who.status!=200: raise web.HTTPUnauthorized(text='Discord identity check failed.')
+            identity=await who.json()
+        self.sessions[sid]={'user_id':int(identity['id']),'token':data['access_token'],'csrf':secrets.token_urlsafe(32),
                             'expires':time.time()+min(int(data.get('expires_in',3600)),3600)}
         response=web.HTTPFound('/')
         response.set_cookie('vivi_session',sid,max_age=3600,httponly=True,samesite='Lax',path='/')
@@ -181,13 +204,16 @@ class Dashboard:
         channel_keys={'goodbye_channel':texts,'birthday_channel':texts,'daily_channel':texts,'raid_channel':texts,
                       'voice_category':categories,'voice_lobby':voices,'autorole':roles,'rules_role':roles}
         for key,typ in OPTION_TYPES.items():
-            if key in {'faq','ticket_categories'}: continue
+            if key in {'faq','ticket_categories','aliases'}: continue
             default=DEFAULTS.get(key,[] if typ is list else False if typ is bool else 0 if typ is int else '')
+            if key=='welcome_text': default=tr(store.option(gid,'language','en'),'Welcome {member} to {server}!')+' '+tr(store.option(gid,'language','en'),'Please read the rules and choose your roles.')
+            if key=='goodbye_text': default=tr(store.option(gid,'language','en'),'Goodbye {member}.')
             value=store.option(gid,key,default)
             fields+='<form action="/setting" method="post">'+hidden+f'<input type="hidden" name="name" value="{key}"><label>{key.replace("_"," ")}</label>'
             if key=='ai_channels':
                 control='<select name="values" multiple size="5">'+''.join(f'<option value="{ident}"'+(' selected' if ident in value else '')+f'>{html.escape(label)}</option>' for ident,label in texts if ident)+'</select><small>Hold Ctrl to choose several AI channels; clear selections to allow none.</small>'
             elif key in channel_keys: control=self.select('value',channel_keys[key],value)
+            elif key=='language': control=self.select('value',[('en','English'),('es','Español'),('fr','Français')],value)
             elif typ is bool: control=self.select('value',[('true','On'),('false','Off')],str(value).lower())
             elif key=='raid_action': control=self.select('value',[('alert','Alert and pause newcomer roles'),('lockdown','Alert and lock selected raid channel')],value)
             elif typ is str or typ is list:
@@ -216,7 +242,7 @@ class Dashboard:
         subscriptions+='<form action="/subscription" method="post">'+hidden+self.select('provider',[(x,x) for x in ['twitch','youtube','github_releases','github_commits']])+self.select('channel',texts)+'<input name="source" placeholder="Twitch login / UC channel ID / owner/repo" required><button name="action" value="add">Add subscription</button></form></details>'
         backup=f'<details><summary>Backup and restore</summary><p><a href="/backup?guild={gid}">Download configuration backup</a></p><form action="/restore" method="post" enctype="multipart/form-data">'+hidden+'<input name="file" type="file" accept=".json" required><label><input name="confirm" type="checkbox" value="yes" required> Replace this server’s configuration with the backup</label><button>Restore configuration</button></form></details>'
         verification='<details><summary>Live permission and provider checks</summary><form action="/verify" method="post">'+hidden+'<label><input name="providers" type="checkbox" value="yes"> Also send a small AI/translation test request (provider charges may apply)</label><button>Run checks without posting Discord messages</button></form></details>'
-        return setup+fields+faq+tickets+subscriptions+backup+verification
+        return setup+fields+faq+tickets+subscriptions+backup+verification+self.tools_forms(gid,session)
 
     async def form(self,request):
         data=await request.post(); session=self.session(request)
@@ -224,6 +250,8 @@ class Dashboard:
         try: gid=int(data.get('guild',''))
         except ValueError: raise web.HTTPBadRequest(text='Invalid server.')
         await self.authorize(request,gid)
+        UI_LANGUAGE.set(self.service.store.option(gid,'language','en'))
+        self.service.store.actor.set('dashboard:'+str(session.get('user_id','admin')))
         return data,session,gid,self.service.bot.get_guild(gid)
 
     def done(self,guild): raise web.HTTPSeeOther('/?guild='+str(guild))
@@ -323,6 +351,7 @@ class Dashboard:
         from .bot import RoleView
         for record in self.service.store.roles():
             if record['guild']==gid: self.service.bot.add_view(RoleView(self.service.bot,gid,record['role']))
+        await self.service.productivity.refresh_configuration(gid)
         self.done(gid)
 
     async def verify(self,request):
@@ -336,7 +365,7 @@ class Dashboard:
         if not self.client or not self.secret: raise ValueError('Missing OAuth credentials')
         self.runner=web.AppRunner(self.app,access_log=None)
         await self.runner.setup()
-        await web.TCPSite(self.runner,self.host,self.port).start()
+        await web.TCPSite(self.runner,self.bind_host,self.port).start()
 
     async def close(self):
         if self.runner: await self.runner.cleanup()

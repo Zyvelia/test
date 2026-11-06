@@ -18,7 +18,8 @@ LOG = logging.getLogger('vivi')
 
 
 async def reply(interaction, text):
-    text = str(text)[:1950]
+    from .i18n import interaction_language,localize_message
+    text = localize_message(interaction_language(interaction),str(text))[:1950]
     if interaction.response.is_done():
         await interaction.followup.send(text, ephemeral=True)
     else:
@@ -231,6 +232,10 @@ class ViviBot(commands.Bot):
         from .operations import register_operations
         from .music import register_voice
         register_operations(self); register_voice(self)
+        from .productivity import register_productivity
+        from .i18n import ViviTranslator
+        register_productivity(self)
+        await self.tree.set_translator(ViviTranslator())
         await self.community.start()
         dev = os.getenv('DEV_GUILD_ID', '').strip()
         if dev:
@@ -239,6 +244,7 @@ class ViviBot(commands.Bot):
             synced = await self.tree.sync(guild=guild)
         else:
             synced = await self.tree.sync()
+        await self.community.productivity.start_aliases()
         LOG.info('Registered %s slash commands', len(synced))
 
     async def on_ready(self):
@@ -250,6 +256,7 @@ class ViviBot(commands.Bot):
     async def command_allowed(self, i):
         from .features import enabled
         if not i.guild or i.command is None: return True
+        self.store.actor.set(f'discord:{i.user.id}')
         mapping = {'role_button':'roles', 'ticket_panel':'tickets',
                    'warn':'moderation','warnings':'moderation','timeout':'moderation',
                    'untimeout':'moderation','kick':'moderation','ban':'moderation','purge':'moderation'}

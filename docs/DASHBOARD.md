@@ -50,3 +50,8 @@ check that the registered redirect exactly matches the configured value. If no
 servers appear, make sure you have Administrator permission (or own the server)
 and the bot is installed there. Browser security paths are covered by automated
 local tests; live OAuth login still needs your Discord application credentials.
+
+The dashboard also provides read-only previews, revision rollback, scheduled-backup
+downloads, safe alias editing, and observed health status. See [PRODUCTIVITY.md](PRODUCTIVITY.md).
+Explicit container mode is the one supported exception to the native loopback bind;
+Compose still publishes only to the host loopback address. See [DOCKER.md](DOCKER.md).

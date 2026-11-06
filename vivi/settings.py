@@ -7,7 +7,7 @@ from .policy import safe_self_role
 DEFAULTS={'welcome_text':'Welcome {member} to {server}!','welcome_color':'#87CEEB',
  'goodbye_text':'Goodbye {member}.','spam_limit':6,'daily_hour':9,'timezone':'UTC','ai_limit':20,
  'mention_limit':5,'raid_limit':8,'raid_window':30,'raid_action':'alert','raid_lock_minutes':5,
- 'warning_count':3,'warning_timeout_minutes':10,'warning_window_days':30,'voice_user_limit':0}
+ 'language':'en','backup_hours':24,'backup_keep':7, 'warning_count':3,'warning_timeout_minutes':10,'warning_window_days':30,'voice_user_limit':0}
 
 def parse_value(name,text):
     if name not in OPTION_TYPES: raise ValueError('Unknown setting.')

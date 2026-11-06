@@ -123,3 +123,7 @@ copies with the same data/token. New installations use data/vivi.sqlite3; existi
 data/aurora.sqlite3 is reused automatically. If both files exist, startup stops so
 you can back them up and choose the intended database. Timers and persistent panels
 survive; active games, voice connections and audio queues do not.
+
+Docker Compose is another supported deployment option; see [DOCKER.md](DOCKER.md).
+The new history, backups, AFK, previews, health and alias features share the same
+implementation on Linux. Only the native Windows tray UI is Windows-specific.

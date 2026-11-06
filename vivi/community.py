@@ -39,7 +39,7 @@ def safe_role(guild, store, role):
 
 def color(value): return int(value.lstrip('#'),16)
 
-def card_bytes(name, server, text, accent, avatar=None):
+def card_bytes(name, server, text, accent, avatar=None, greeting=None):
     image=Image.new('RGB',(900,260),(18,24,38)); d=ImageDraw.Draw(image)
     d.rounded_rectangle((5,5,894,254),radius=22,outline=accent,width=4)
     font=ImageFont.load_default(size=26); small=ImageFont.load_default(size=18)
@@ -48,7 +48,7 @@ def card_bytes(name, server, text, accent, avatar=None):
             picture=source.convert('RGB').resize((160,160))
         mask=Image.new('L',(160,160)); ImageDraw.Draw(mask).ellipse((0,0,159,159),fill=255)
         image.paste(picture,(30,50),mask)
-    d.text((220,40),f'Welcome, {name[:30]}!',font=font,fill=accent)
+    d.text((220,40),greeting or f'Welcome, {name[:30]}!',font=font,fill=accent)
     d.text((220,90),server[:45],font=small,fill='white')
     # Wrap on character boundaries as a fallback for long unbroken text.
     lines=[text[x:x+48] for x in range(0,min(len(text),144),48)]
@@ -135,7 +135,7 @@ class DeleteView(discord.ui.View):
         self.service.store.delete_personal(self.guild,self.user)
         for record in self.service.store.records(self.guild):
             data=record['data']
-            if (record['kind'] in {'appeal','report'} and data.get('author')==self.user) or (record['kind']=='ticket_rating' and data.get('user')==self.user):
+            if (record['kind'] in {'appeal','report'} and data.get('author')==self.user) or (record['kind'] in {'ticket_rating','afk'} and data.get('user')==self.user):
                 self.service.store.delete_record(record['id'])
             elif record['kind']=='report' and data.get('target')==self.user:
                 data['target']=0; self.service.store.put_record(self.guild,record['kind'],data,record['id'])
@@ -192,6 +192,8 @@ class Community:
         from .operations import Operations
         from .music import VoiceTools
         self.operations=Operations(self); self.voice=VoiceTools(self)
+        from .productivity import Productivity
+        self.productivity=Productivity(self)
         self.bot.add_listener(self.on_message,'on_message')
         self.bot.add_listener(self.on_message_edit,'on_message_edit')
         self.bot.add_listener(self.on_member_remove,'on_member_remove')
@@ -276,13 +278,15 @@ class Community:
         if not enabled(self.store,guild.id,'welcome'): return
         config=self.store.settings(guild.id); channel=guild.get_channel(config['welcome']) if config else None
         if not channel: return
-        text=self.store.option(guild.id,'welcome_text','Welcome {member} to {server}! Read the rules and choose your roles.')
+        from .i18n import tr
+        language=self.store.option(guild.id,'language','en')
+        text=self.store.option(guild.id,'welcome_text',tr(language,'Welcome {member} to {server}!')+' '+tr(language,'Please read the rules and choose your roles.'))
         text=text.replace('{member}',member.mention).replace('{server}',guild.name)
         try:
             if enabled(self.store,guild.id,'welcome_cards'):
                 avatar=await member.display_avatar.with_size(256).with_format('png').read()
                 data=await asyncio.to_thread(card_bytes,member.display_name,guild.name,
-                    text.replace(member.mention,member.display_name),self.store.option(guild.id,'welcome_color','#87CEEB'),avatar)
+                    text.replace(member.mention,member.display_name),self.store.option(guild.id,'welcome_color','#87CEEB'),avatar,tr(language,'Welcome, {name}!',name=member.display_name[:30]))
                 await channel.send(text,file=discord.File(io.BytesIO(data),filename='welcome.png'),
                                    allowed_mentions=discord.AllowedMentions(users=[member],roles=False,everyone=False))
             else: await channel.send(text,allowed_mentions=discord.AllowedMentions(users=[member],roles=False,everyone=False))
@@ -292,7 +296,8 @@ class Community:
         if not enabled(self.store,member.guild.id,'goodbye'): return
         channel=member.guild.get_channel(self.store.option(member.guild.id,'goodbye_channel',0))
         if channel:
-            text=self.store.option(member.guild.id,'goodbye_text','Goodbye {member}. Thanks for visiting {server}.')
+            from .i18n import tr
+            text=self.store.option(member.guild.id,'goodbye_text',tr(self.store.option(member.guild.id,'language','en'),'Goodbye {member}.'))
             with contextlib.suppress(discord.HTTPException):
                 await channel.send(text.replace('{member}',member.display_name).replace('{server}',member.guild.name))
 
@@ -323,6 +328,9 @@ class Community:
                         await self.case(guild,message.author.id,self.bot.user.id,'automod delete',reason,message.author)
                 except discord.HTTPException: LOG.warning('AutoMod needs message deletion permission in %s',guild.id)
                 return
+        if not edited and enabled(self.store,guild.id,'afk'):
+            try: await self.productivity.on_message(message)
+            except discord.HTTPException as error: self.productivity.error('afk reply',error)
         if not edited and enabled(self.store,guild.id,'xp'):
             p=self.store.profile(guild.id,message.author.id)
             before=p['coins']
@@ -370,6 +378,7 @@ class Community:
         self.store.put_record(guild.id,'giveaway',data,record['id'])
 
     async def run_due(self):
+        await self.productivity.tick()
         await self.voice.maintenance()
         now=timestamp()
         for key,recent in list(self.spam.items()):
@@ -400,7 +409,9 @@ class Community:
                 elif kind in {'poll','giveaway'} and not d.get('closed') and d['ends']<=now:
                     if kind=='poll': await self.finish_poll(record)
                     else: await self.draw(record)
-            except Exception: LOG.exception('Scheduled %s operation failed; retained for retry',kind)
+            except Exception as error:
+                self.productivity.error('scheduled '+kind,error)
+                LOG.exception('Scheduled %s operation failed; retained for retry',kind)
         for guild in self.bot.guilds:
             zone=ZoneInfo(self.store.option(guild.id,'timezone','UTC'))
             local=dt.datetime.now(zone); day=local.date().isoformat()
@@ -428,14 +439,18 @@ class Community:
         while not self.bot.is_closed():
             try:
                 async with self.lock: await self.run_due()
-            except Exception: LOG.exception('Scheduler iteration failed; retrying in 30 seconds')
+            except Exception as error:
+                self.productivity.error('timer scheduler',error)
+                LOG.exception('Scheduler iteration failed; retrying in 30 seconds')
             await asyncio.sleep(30)
 
     async def notification_scheduler(self):
         await self.bot.wait_until_ready()
         while not self.bot.is_closed():
             try: await self.operations.poll_notifications()
-            except Exception: LOG.exception('Notification scheduler failed; retrying')
+            except Exception as error:
+                self.productivity.error('notification scheduler',error)
+                LOG.exception('Notification scheduler failed; retrying')
             await asyncio.sleep(30)
 
 
@@ -500,6 +515,9 @@ def register_extra(bot):
             parsed=parse_value(name,value); validate_resources(store,i.guild,name,parsed)
             store.set_option(i.guild_id,name,parsed)
         except (ValueError,KeyError) as e: return await reply(i,str(e))
+        if name=='aliases':
+            await i.response.defer(ephemeral=True)
+            await service.productivity.refresh_aliases(i.guild_id)
         await reply(i,f'Saved {name}.')
 
     @admin_command('faq_add','Add or replace an FAQ answer; members search using /community faq.')
@@ -533,6 +551,7 @@ def register_extra(bot):
             for row in store.roles():
                 if row['guild']==i.guild_id: bot.add_view(RoleView(bot,i.guild_id,row['role']))
         except (ValueError,KeyError,TypeError) as e: return await reply(i,f'Backup not restored: {e}')
+        await service.productivity.refresh_configuration(i.guild_id)
         await reply(i,'Configuration restored atomically. Personal data and live panels were not restored; check channel permissions and repost panels as needed.')
 
     @community.command(name='faq',description='Search this server’s FAQ questions and answers.')

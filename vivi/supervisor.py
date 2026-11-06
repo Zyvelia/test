@@ -1,5 +1,6 @@
 """Restart transient bot crashes; stop on clean exits or configuration errors."""
 import os
+import signal
 from pathlib import Path
 import subprocess
 import sys
@@ -11,6 +12,9 @@ def main():
     if sys.stdout is None: sys.stdout=open(os.devnull,'w')
     if sys.stderr is None: sys.stderr=open(os.devnull,'w')
     folder=ROOT/'data'/'logs'; folder.mkdir(parents=True,exist_ok=True)
+    def stop_signal(signum,frame): raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM,stop_signal)
+    if hasattr(signal,'SIGBREAK'): signal.signal(signal.SIGBREAK,stop_signal)
     delay=5
     try:
         while True:

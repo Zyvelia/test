@@ -5,14 +5,18 @@ import time
 import secrets
 import hashlib
 import hmac
+from contextvars import ContextVar
 from pathlib import Path
 
 class Store:
     def __init__(self, path):
+        self.path=Path(path)
+        self.actor=ContextVar('vivi_config_actor',default='system')
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
         self.db.executescript("""
+            CREATE TABLE IF NOT EXISTS config_history (id INTEGER PRIMARY KEY, guild INTEGER, actor TEXT, action TEXT, before_json TEXT, after_json TEXT, created TEXT DEFAULT CURRENT_TIMESTAMP);
             CREATE TABLE IF NOT EXISTS settings (
                 guild INTEGER PRIMARY KEY, welcome INTEGER NOT NULL,
                 category INTEGER NOT NULL, staff INTEGER NOT NULL, logs INTEGER NOT NULL);
@@ -39,13 +43,17 @@ class Store:
         return self.db.execute('SELECT * FROM settings WHERE guild=?', (guild,)).fetchone()
 
     def configure(self, guild, welcome, category, staff, logs):
+        before=self.export_config(guild)
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO settings VALUES (?,?,?,?,?)',
                             (guild, welcome, category, staff, logs))
+            self.log_config(guild,'server setup',before)
 
     def add_role(self, guild, role):
+        before=self.export_config(guild)
         with self.db:
             self.db.execute('INSERT OR IGNORE INTO roles VALUES (?,?)', (guild, role))
+            self.log_config(guild,'role button registration',before)
 
     def roles(self):
         return self.db.execute('SELECT guild, role FROM roles').fetchall()
@@ -82,8 +90,10 @@ class Store:
         return json.loads(row[0]) if row else default
 
     def set_option(self, guild, key, value):
+        before=self.export_config(guild) if guild and not key.startswith('internal_') else None
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO options VALUES (?,?,?)', (guild,key,json.dumps(value)))
+            if before is not None: self.log_config(guild,'setting: '+key,before)
 
     def record(self, ident):
         row = self.db.execute('SELECT * FROM records WHERE id=?', (ident,)).fetchone()
@@ -97,14 +107,20 @@ class Store:
 
     def put_record(self, guild, kind, data, ident=None):
         ident = ident or secrets.token_hex(8)
+        before=self.export_config(guild) if kind=='notification' else None
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO records VALUES (?,?,?,?)', (ident,guild,kind,json.dumps(data)))
+            if before is not None: self.log_config(guild,'notification subscription',before)
         return ident
 
     def delete_record(self, ident):
+        record=self.record(ident)
+        guild=record['guild'] if record else 0
+        before=self.export_config(guild) if record and record['kind']=='notification' else None
         with self.db:
             self.db.execute('DELETE FROM records WHERE id=?', (ident,))
             self.db.execute('DELETE FROM ballots WHERE item=?', (ident,))
+            if before is not None: self.log_config(guild,'remove notification subscription',before)
 
     def vote(self, item, voter, value):
         with self.db:
@@ -152,6 +168,7 @@ class Store:
         # Validation happens before the transaction; personal data and records are never restored.
         from .features import validate_backup
         validate_backup(guild, backup)
+        before=self.export_config(guild)
         with self.db:
             self.db.execute("DELETE FROM options WHERE guild=? AND key NOT LIKE 'internal_%'",(guild,))
             for key,value in backup['options'].items():
@@ -169,6 +186,7 @@ class Store:
             if s:
                 self.db.execute('INSERT INTO settings VALUES (?,?,?,?,?)',
                                 (guild,s['welcome'],s['category'],s['staff'],s['logs']))
+            self.log_config(guild,'restore',before)
 
     def delete_personal(self, guild, user):
         # Remove attributable ballots, including the keyed voter hash for open anonymous polls.
@@ -188,6 +206,21 @@ class Store:
             self.db.execute('DELETE FROM cases WHERE guild=? AND user=?',(guild,user))
             self.db.execute('UPDATE cases SET moderator=0 WHERE guild=? AND moderator=?',(guild,user))
             self.db.execute('UPDATE warnings SET moderator=0 WHERE guild=? AND moderator=?',(guild,user))
+
+    def log_config(self,guild,action,before):
+        if not guild: return
+        after=self.export_config(guild)
+        if before==after and action!='restore': return
+        self.db.execute('INSERT INTO config_history(guild,actor,action,before_json,after_json) VALUES (?,?,?,?,?)',
+            (guild,str(self.actor.get())[:100],action[:100],json.dumps(before),json.dumps(after)))
+        self.db.execute('DELETE FROM config_history WHERE guild=? AND id NOT IN (SELECT id FROM config_history WHERE guild=? ORDER BY id DESC LIMIT 100)',(guild,guild))
+
+    def history(self,guild):
+        return self.db.execute('SELECT id,actor,action,created FROM config_history WHERE guild=? ORDER BY id DESC LIMIT 100',(guild,)).fetchall()
+
+    def revision(self,guild,ident):
+        row=self.db.execute('SELECT * FROM config_history WHERE guild=? AND id=?',(guild,ident)).fetchone()
+        return dict(row,before=json.loads(row['before_json']),after=json.loads(row['after_json'])) if row else None
 
 
 def database_path(root):

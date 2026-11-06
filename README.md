@@ -4,6 +4,11 @@ A Discord server bot you can run on **Windows or Linux** for free. Includes welc
 messages, self-service role buttons, staff moderation, and private support tickets.
 This replaces the Minecraft project; previous versions remain in Git history.
 
+Latest additions: [AFK, previews, history, scheduled backups, Windows tray,
+health, languages and aliases](docs/PRODUCTIVITY.md), plus [Docker deployment](docs/DOCKER.md).
+New AFK/backup/alias features start off. Rerun setup after updating; tray.bat opens
+Windows controls, while Docker is an alternative deployment method.
+
 ## What it does
 
 - Custom welcome cards, goodbye messages, safe newcomer roles, and rules acceptance.

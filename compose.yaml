@@ -1,0 +1,16 @@
+services:
+  vivi:
+    build: .
+    init: true
+    restart: "on-failure:5"
+    env_file: .env
+    environment:
+      VIVI_CONTAINER: "1"
+      DASHBOARD_BIND_HOST: "0.0.0.0"
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - vivi-data:/app/data
+    stop_grace_period: 20s
+volumes:
+  vivi-data:

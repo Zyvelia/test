@@ -13,6 +13,7 @@ FEATURES = {
     'spotlight': False, 'games': False, 'daily_questions': False, 'xp': False,
     'economy': False, 'translation': False, 'ai': False,
     'music': False, 'voice_rooms': False, 'notifications': False, 'ticket_tools': False,
+    'afk': False, 'scheduled_backups': False, 'custom_aliases': False,
     'raid_protection': False, 'mention_protection': False, 'warning_thresholds': False,
 }
 OPTION_TYPES = {
@@ -25,7 +26,7 @@ OPTION_TYPES = {
     'raid_channel': int, 'raid_lock_minutes': int, 'warning_count': int,
     'warning_timeout_minutes': int, 'warning_window_days': int,
     'ticket_categories': dict, 'voice_lobby': int, 'voice_category': int,
-    'voice_user_limit': int,
+    'voice_user_limit': int, 'language': str, 'backup_hours': int, 'backup_keep': int, 'aliases': dict,
 }
 TRIVIA = [
     ('Which planet is the largest?', ['Jupiter','Earth','Mars','Venus'],0),
@@ -66,6 +67,12 @@ def validate_option(key, value):
         return
     if key not in OPTION_TYPES or type(value) is not OPTION_TYPES[key]: raise ValueError('Unknown setting or invalid type.')
     if isinstance(value,str) and len(value)>1800: raise ValueError('Setting is too long.')
+    if key=='language' and value not in {'en','es','fr'}: raise ValueError('Supported languages: en, es, fr.')
+    if key=='aliases':
+        from .productivity import validate_aliases
+        validate_aliases(value)
+    if key=='backup_hours' and not 1<=value<=168: raise ValueError('Backup interval must be 1–168 hours.')
+    if key=='backup_keep' and not 1<=value<=30: raise ValueError('Backup retention must be 1–30 files.')
     if key=='faq':
         if len(value)>50 or any(not isinstance(q,str) or not isinstance(a,str) or not 1<=len(q)<=150 or not 1<=len(a)<=1200 for q,a in value.items()): raise ValueError('Invalid FAQ backup.')
     limits={'mention_limit':(1,100),'raid_limit':(3,100),'raid_window':(10,300),
