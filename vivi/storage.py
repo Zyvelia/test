@@ -36,6 +36,7 @@ class Store:
             CREATE TABLE IF NOT EXISTS cases (id INTEGER PRIMARY KEY, guild INTEGER, user INTEGER,
                 moderator INTEGER, action TEXT, reason TEXT, created TEXT DEFAULT CURRENT_TIMESTAMP);
         """)
+        self.db.execute('CREATE INDEX IF NOT EXISTS records_kind ON records(kind)')
         if not self.option(0,'internal_legacy_cases',False):
             with self.db:
                 self.db.execute("INSERT INTO cases(guild,user,moderator,action,reason,created) SELECT guild,user,moderator,'legacy warning',reason,created FROM warnings")
@@ -95,6 +96,7 @@ class Store:
         before=self.export_config(guild) if guild and not key.startswith('internal_') else None
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO options VALUES (?,?,?)', (guild,key,json.dumps(value)))
+            if key=='feature:global_bans' and not value:self.db.execute("DELETE FROM records WHERE guild=? AND kind='global_ban_consent'",(guild,))
             if before is not None: self.log_config(guild,'setting: '+key,before)
 
     def record(self, ident):
@@ -188,6 +190,9 @@ class Store:
             if s:
                 self.db.execute('INSERT INTO settings VALUES (?,?,?,?,?)',
                                 (guild,s['welcome'],s['category'],s['staff'],s['logs']))
+            if 'feature:global_bans' in backup['options'] or self.record(f'globalconsent:{guild}'):
+                self.db.execute("DELETE FROM records WHERE guild=? AND kind='global_ban_consent'",(guild,))
+                self.db.execute('INSERT OR REPLACE INTO options VALUES (?,?,?)',(guild,'feature:global_bans','false'))
             self.log_config(guild,'restore',before)
 
     def delete_personal(self, guild, user):

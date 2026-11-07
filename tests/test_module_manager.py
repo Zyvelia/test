@@ -53,6 +53,14 @@ class ModuleManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(enabled(self.store,1,'ai'))
         self.dashboard.api_guilds.return_value={'1':{'id':'1','permissions':'8'}}
         with self.assertRaises(web.HTTPForbidden):await self.dashboard.module_state(self.request('/api/modules?guild=2'))
+    async def test_global_network_requires_owner_and_explicit_consent(self):
+        self.bot._connection.user=NS(id=99);self.guild.owner_id=10;self.guild.me=NS(guild_permissions=discord.Permissions(ban_members=True))
+        with self.assertRaises(web.HTTPBadRequest):await self.dashboard.feature(self.post(feature='global_bans',enabled='true'))
+        request=self.post(feature='global_bans',enabled='true',global_consent='true');response=await self.dashboard.feature(request)
+        self.assertTrue(json.loads(response.text)['enabled']);self.assertTrue(self.bot.community.global_bans.participating(self.guild))
+        self.guild.owner_id=11
+        with self.assertRaises(web.HTTPForbidden):await self.dashboard.feature(self.post(feature='global_bans',enabled='true',global_consent='true'))
+        state=json.loads((await self.dashboard.module_state(self.request('/api/modules?guild=1'))).text);self.assertFalse(state['features']['global_bans'])
     async def test_native_form_fallback_returns_to_modules(self):
         request=self.post(feature='welcome',enabled='false',**{'return':'modules'});request.headers={}
         with self.assertRaises(web.HTTPSeeOther) as caught:await self.dashboard.feature(request)

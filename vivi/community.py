@@ -238,6 +238,8 @@ class Community:
         self.invites=InviteTracker(self); self.profiles=ProfileCards(self)
         from .scam_images import ScamImages
         self.scam_images=ScamImages(self)
+        from .global_bans import GlobalBans
+        self.global_bans=GlobalBans(self)
         self.bot.add_listener(self.on_message,'on_message')
         self.bot.add_listener(self.on_message_edit,'on_message_edit')
         self.bot.add_listener(self.on_member_remove,'on_member_remove')
@@ -263,12 +265,12 @@ class Community:
             LOG.error('Webhook listener not started; check its signing secret, bind and port.')
         self.task=asyncio.create_task(self.scheduler(),name='vivi-scheduler')
         self.notification_task=asyncio.create_task(self.notification_scheduler(),name='vivi-notifications')
-        self.suite.start(); self.games.start_task()
+        self.suite.start(); self.games.start_task(); self.global_bans.start()
         from .guild_library import restore_team_panels
         restore_team_panels(self)
 
     async def close(self):
-        await self.suite.close(); await self.games.close()
+        await self.suite.close(); await self.games.close(); await self.global_bans.close()
         await self.webhooks.close()
         if self.notification_task:
             self.notification_task.cancel()
@@ -321,6 +323,7 @@ class Community:
         return ident
 
     async def on_join(self,member):
+        if await self.global_bans.on_join(member):return
         guild=member.guild
         await self.operations.on_join(member)
         if enabled(self.store,guild.id,'autorole') and (not enabled(self.store,guild.id,'raid_protection') or self.store.option(guild.id,'internal_raid_until',0)<=time.time()):
@@ -545,7 +548,13 @@ def register_extra(bot):
     @app_commands.autocomplete(name=feature_choices)
     async def feature(i:discord.Interaction,name:str,enabled:bool):
         if name not in FEATURES: return await reply(i,'Unknown feature. Use the suggestions.')
-        store.set_option(i.guild_id,'feature:'+name,enabled)
+        if name=='global_bans':
+            if enabled:
+                from .global_ban_menu import confirm_participation
+                return await confirm_participation(service.global_bans,i)
+            try:service.global_bans.set_participation(i.guild,i.user.id,enabled,administrator=i.user.guild_permissions.administrator)
+            except (PermissionError,ValueError) as error:return await reply(i,str(error))
+        else:store.set_option(i.guild_id,'feature:'+name,enabled)
         if name=='invite_tracking':service.invites.cache.pop(i.guild_id,None)
         await reply(i,f'{name}: {"ON" if enabled else "OFF"}.')
 

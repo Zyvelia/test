@@ -265,3 +265,8 @@ Manage features directly on the website: **Features → Manage your server’s
 features**, sign in, choose your server, then enable modules and open their settings.
 The new module manager has categories, search and switches that sync with Discord.
 [Website feature manager guide](docs/WEB-MODULES.md).
+
+`/globalban` provides operator-account-only global moderation with explicit server-owner
+opt-in, evidence/reason review, persistent per-server results and verified optional
+undo. Controls are bound to ZyVelia's configured numeric Discord user ID.
+[Global-ban setup, consent and limits](docs/GLOBAL-BANS.md).

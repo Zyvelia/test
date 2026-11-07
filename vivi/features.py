@@ -17,7 +17,7 @@ FEATURES = {
     'economy': False, 'translation': False, 'ai': False,
     'music': False, 'voice_rooms': False, 'notifications': False, 'ticket_tools': False,
     'instant_webhooks': False, 'afk': False, 'scheduled_backups': False, 'custom_aliases': False,
-    'raid_protection': False, 'mention_protection': False, 'warning_thresholds': False,
+    'raid_protection': False, 'mention_protection': False, 'warning_thresholds': False, 'global_bans':False,
 }
 OPTION_TYPES = {
     'scam_image_distance':int,

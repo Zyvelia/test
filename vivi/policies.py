@@ -25,7 +25,7 @@ PRIVACY=[
  ('Information Vivi processes',
   'Vivi uses Discord user, server, channel, role and message identifiers; display names and avatars; server configuration; '
   'command inputs and interaction data. Enabled features can store moderation reasons and evidence, reports, appeals, '
-  'support ticket records and transcripts, profile uploads, birthdays, timezones, reminders, game progress, XP, fictional currency and votes. '
+  'support ticket records and transcripts, profile uploads, birthdays, timezones, reminders, game progress, XP, fictional currency and votes. If a server owner opts into the global-ban network, Vivi also stores global user-ID blocklist entries, operator reasons and evidence references, owner consent and per-server enforcement results. Global-ban appeals can be sent privately to the contact email; removing a profile does not remove retained moderation entries. '
   'Message content can be processed for enabled moderation, activity and other message-based features. Known scam-image filtering processes supported image attachments to compare them with staff-supplied reference hashes. It stores reference hashes, labels and staff IDs, rather than the original reference image files; moderation matches may create case records. This does not mean every server message is saved; '
   'ticket transcripts, case evidence and other feature records can retain message text or attachments. '
   'Support messages you send to the operator are also information you provide.'),
@@ -99,8 +99,8 @@ TERMS=[
   'Do not exploit vulnerabilities, abuse integrations, automate disruptive requests or attempt to obtain credentials or private server data. '
   'Report vulnerabilities privately using the contact email rather than testing against other users or servers without permission.'),
  ('Server administration and moderation',
-  'Only manage servers where you have the necessary authority. Server owners and administrators choose modules, roles, channels and settings, '
-  'and are responsible for configuring permissions and informing members about enabled features. '
+  'Only manage servers where you have the necessary authority. Server owners and administrators choose modules, roles, channels and settings. Only server owners can opt in to the global-ban network, delegating enforcement of the configured operator’s current and future entries. Withdrawal stops future network actions but does not itself undo existing server bans. Independent or unverifiable bans remain subject to local staff review. '
+  'Server administrators are responsible for configuring permissions and informing members about enabled features. '
   'Automated moderation can make mistakes; review significant actions. Server moderation decisions and appeals belong first with the responsible server staff. '
   'For suspected abuse of Vivi itself, contact ZyVelia.'),
  ('Your content and privacy',

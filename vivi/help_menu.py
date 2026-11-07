@@ -26,6 +26,9 @@ def category(command):
     return next((key for key,(_,roots) in CATEGORIES.items() if root in roots),'tools')
 
 def visible(command,interaction):
+    if command.name=='globalban':
+        from .global_bans import is_operator
+        if not is_operator(interaction.user):return False
     """Discovery filter only: command execution still enforces all original checks."""
     node=command;permissions=getattr(interaction.user,'guild_permissions',discord.Permissions.none())
     while node:

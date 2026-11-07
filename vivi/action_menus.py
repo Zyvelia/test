@@ -304,13 +304,14 @@ class SettingsMenu(ActionMenu):
             back.callback=features;self.add_item(back);return embed
         self.clear_items()
         from .features import FEATURES,OPTION_TYPES,enabled
+        def feature_on(key):return self.bot.community.global_bans.participating(i.guild) if key=='global_bans' else enabled(self.bot.store,i.guild_id,key)
         keys=list(FEATURES) if self.tab=='features' else [key for key in OPTION_TYPES if key!='faq']
         last=max(0,(len(keys)-1)//PAGE);self.page=min(self.page,last);keys=keys[self.page*PAGE:(self.page+1)*PAGE]
         embed=discord.Embed(title='Vivi · Server settings',description='Manage feature switches and detailed settings here. Changes share the bot’s existing configuration and appear in the dashboard.',color=0xff65ad)
         if self.key:
-            current=enabled(self.bot.store,i.guild_id,self.key) if self.tab=='features' else self.bot.store.option(i.guild_id,self.key,'Not set')
+            current=feature_on(self.key) if self.tab=='features' else self.bot.store.option(i.guild_id,self.key,'Not set')
             embed.add_field(name=self.key.replace('_',' ').title(),value=discord.utils.escape_markdown(str(current))[:500] or '(empty)',inline=False)
-        select=discord.ui.Select(placeholder='Choose a feature' if self.tab=='features' else 'Choose a setting',row=0,options=[discord.SelectOption(label=(key.replace('_',' ').title()+(' · ON' if enabled(self.bot.store,i.guild_id,key) else ' · OFF') if self.tab=='features' else key.replace('_',' ').title())[:100],value=key,default=key==self.key) for key in keys])
+        select=discord.ui.Select(placeholder='Choose a feature' if self.tab=='features' else 'Choose a setting',row=0,options=[discord.SelectOption(label=(key.replace('_',' ').title()+(' · ON' if feature_on(key) else ' · OFF') if self.tab=='features' else key.replace('_',' ').title())[:100],value=key,default=key==self.key) for key in keys])
         async def choose(i):self.key=i.data['values'][0];await i.response.edit_message(embed=self.draw(i),view=self)
         select.callback=choose;self.add_item(select)
         for label,action in [('Features','features'),('Detailed settings','settings'),('Setup & backups','actions'),('Previous','previous'),('Next','next')]:
@@ -327,8 +328,14 @@ class SettingsMenu(ActionMenu):
                     if self.key!=key or self.tab!=tab:return await reply(i,'This selection changed. Use its current controls.')
                     if tab!='features':return await i.response.send_modal(SettingForm(self,key))
                     if self.key not in FEATURES:return await reply(i,'Select a valid feature.')
+                    if self.key=='global_bans' and on:
+                        from .global_ban_menu import confirm_participation
+                        return await confirm_participation(self.bot.community.global_bans,i)
                     token=self.bot.store.actor.set('discord:'+str(i.user.id))
-                    try:self.bot.store.set_option(i.guild_id,'feature:'+self.key,on)
+                    try:
+                        if self.key=='global_bans':self.bot.community.global_bans.set_participation(i.guild,i.user.id,on,administrator=i.user.guild_permissions.administrator)
+                        else:self.bot.store.set_option(i.guild_id,'feature:'+self.key,on)
+                    except (PermissionError,ValueError) as error:return await reply(i,str(error))
                     finally:self.bot.store.actor.reset(token)
                     if self.key=='invite_tracking':self.bot.community.invites.cache.pop(i.guild_id,None)
                     await i.response.edit_message(embed=self.draw(i),view=self)

@@ -79,7 +79,7 @@
       const query=new URLSearchParams({guild:manager.dataset.guild});if(search.value)query.set('search',search.value);if(category.value!=='all')query.set('category',category.value);if(state.value!=='all')query.set('state',state.value);history.replaceState(null,'','/modules?'+query);
     }
     function apply(card,on){
-      card.querySelector('.module-save').textContent='';card.dataset.enabled=String(on);card.querySelector('[data-module-state]').textContent=on?'Enabled':'Disabled';const form=card.querySelector('form'),button=form.querySelector('button');form.elements.enabled.value=String(!on);button.setAttribute('aria-checked',String(on));button.textContent=on?'Disable':'Enable';
+      card.querySelector('.module-save').textContent='';card.dataset.enabled=String(on);card.querySelector('[data-module-state]').textContent=on?'Enabled':'Disabled';const form=card.querySelector('form'),button=form.querySelector('button');form.elements.enabled.value=String(!on);button.setAttribute('aria-checked',String(on));button.textContent=on?'Disable':'Enable';const consent=form.querySelector('[data-global-consent]');if(consent){consent.hidden=on;const box=consent.querySelector('input');box.checked=false;box.required=!on;box.disabled=card.dataset.ownerCanEnable!=='true';button.disabled=!on&&card.dataset.ownerCanEnable!=='true';}
     }
     filter.addEventListener('submit',event=>{event.preventDefault();render();});search.addEventListener('input',render);category.addEventListener('change',render);state.addEventListener('change',render);
     manager.querySelectorAll('[data-module-toggle]').forEach(form=>form.addEventListener('submit',async event=>{
@@ -89,7 +89,7 @@
         if(!response.ok)throw new Error(response.status===401||response.status===403?'Your session expired or your permissions changed. Sign in again.':'Could not save this module. Try again.');
         const data=await response.json();apply(card,data.enabled);feedback.textContent='Saved';status.textContent=card.querySelector('h3').textContent+' '+(data.enabled?'enabled':'disabled')+' · saved to your server.';render();
       }catch(error){feedback.textContent=error.message;status.textContent=error.message;}
-      finally{epoch++;button.disabled=false;button.removeAttribute('aria-busy');}
+      finally{epoch++;button.disabled=card.dataset.featureModule==='global_bans'&&card.dataset.ownerCanEnable!=='true'&&card.dataset.enabled!=='true';button.removeAttribute('aria-busy');}
     }));
     async function refresh(){
       if(polling||document.hidden||manager.querySelector('[aria-busy=true]'))return;polling=true;const started=epoch;

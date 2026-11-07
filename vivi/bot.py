@@ -256,6 +256,8 @@ class ViviBot(commands.Bot):
         register_competitions(self);register_library(self);register_invites(self);register_profiles(self)
         from .action_menus import register_menus
         register_menus(self)
+        from .global_ban_menu import register_global_bans
+        register_global_bans(self)
         await self.tree.set_translator(ViviTranslator())
         synced = await self.sync_application_commands()
         await self.community.start()

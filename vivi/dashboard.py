@@ -149,6 +149,8 @@ class Dashboard(ModuleManager,Website,StudioDashboard,AdvancedDashboard,Dashboar
         forms=[]
         for feature in FEATURES:
             on=enabled(self.service.store,guild,feature)
+            if feature=='global_bans':
+                forms.append(f'<div class="module-card"><b>Global bans</b><a href="/modules?guild={guild}#module-global_bans">Manage owner participation →</a></div>');continue
             forms.append(f'<form class="module-card" action="/feature" method="post"><input type="hidden" name="csrf" value="{session["csrf"]}">'
                          f'<input type="hidden" name="guild" value="{guild}"><input type="hidden" name="feature" value="{feature}">'
                          f'<input type="hidden" name="enabled" value="{str(not on).lower()}"><b>{feature.replace("_"," ")}</b>: {"ON" if on else "OFF"} '
@@ -205,7 +207,12 @@ class Dashboard(ModuleManager,Website,StudioDashboard,AdvancedDashboard,Dashboar
         await self.authorize(request,guild)
         feature=data.get('feature'); value=data.get('enabled')
         if feature not in FEATURES or value not in {'true','false'}: raise web.HTTPBadRequest(text='Invalid feature setting.')
-        self.service.store.set_option(guild,'feature:'+feature,value=='true')
+        if feature=='global_bans':
+            if value=='true' and data.get('global_consent')!='true':raise web.HTTPBadRequest(text='Explicit owner consent is required for global-ban enforcement.')
+            try:self.service.global_bans.set_participation(self.service.bot.get_guild(guild),session['user_id'],value=='true',administrator=True,confirmed=data.get('global_consent')=='true')
+            except PermissionError as error:raise web.HTTPForbidden(text=str(error))
+            except ValueError as error:raise web.HTTPBadRequest(text=str(error))
+        else:self.service.store.set_option(guild,'feature:'+feature,value=='true')
         if feature=='invite_tracking':self.service.invites.cache.pop(guild,None)
         if 'application/json' in getattr(request,'headers',{}).get('Accept',''):
             return web.json_response({'feature':feature,'enabled':value=='true','revision':self.config_revision(guild)})
