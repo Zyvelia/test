@@ -341,7 +341,7 @@ class Community:
         text=expand(text,member,mention=True)[:2000]
         try:
             if self.store.option(guild.id,'welcome_mode','text')=='embed' and self.store.option(guild.id,'welcome_embed',{}):
-                await channel.send(embed=message_embed(self.store.option(guild.id,'welcome_embed',{}),member),allowed_mentions=discord.AllowedMentions.none())
+                await channel.send(embed=message_embed(self.store.option(guild.id,'welcome_embed',{}),member,self.store.option(guild.id,'welcome_appearance',{})),allowed_mentions=discord.AllowedMentions.none())
             elif enabled(self.store,guild.id,'welcome_cards'):
                 avatar=await member.display_avatar.with_size(256).with_format('png').read()
                 data=await asyncio.to_thread(card_bytes,member.display_name,guild.name,
@@ -360,7 +360,7 @@ class Community:
             with contextlib.suppress(discord.HTTPException):
                 from vivi.site.message_templates import expand,message_embed
                 if self.store.option(member.guild.id,'goodbye_mode','text')=='embed' and self.store.option(member.guild.id,'goodbye_embed',{}):
-                    await channel.send(embed=message_embed(self.store.option(member.guild.id,'goodbye_embed',{}),member),allowed_mentions=discord.AllowedMentions.none())
+                    await channel.send(embed=message_embed(self.store.option(member.guild.id,'goodbye_embed',{}),member,self.store.option(member.guild.id,'goodbye_appearance',{})),allowed_mentions=discord.AllowedMentions.none())
                 else:await channel.send(expand(text,member)[:2000],allowed_mentions=discord.AllowedMentions.none())
 
     async def on_message_edit(self,before,after):

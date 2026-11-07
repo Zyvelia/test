@@ -57,10 +57,13 @@ class HelpMenu(discord.ui.View):
             await reply(i,'This help menu has expired. Open /help again.');return False
         return True
     def commands(self,i):
-        commands=list(self.bot.tree.walk_commands())
+        # Guild roots override global roots, including copies used for development sync.
+        roots={c.name:c for c in self.bot.tree.get_commands()}
         if self.guild is not None:
-            for root in self.bot.tree.get_commands(guild=discord.Object(id=self.guild)):
-                commands.extend(root.walk_commands() if isinstance(root,app_commands.Group) else [root])
+            roots.update({c.name:c for c in self.bot.tree.get_commands(guild=discord.Object(id=self.guild))})
+        commands=[]
+        for root in roots.values():
+            commands.extend(root.walk_commands() if isinstance(root,app_commands.Group) else [root])
         return sorted([c for c in commands if isinstance(c,app_commands.Command) and visible(c,i)],key=lambda c:c.qualified_name)
     def favorites(self):
         return normalize_favorites(self.bot,self.bot.store.profile(self.guild,self.owner).get('favorites',[])) if self.guild is not None else []

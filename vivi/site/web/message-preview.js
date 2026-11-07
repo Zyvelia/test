@@ -24,10 +24,16 @@
   if(mode==='text'){preview.style.borderColor='#ff65ad';formatted(text,form.elements.text.value||'Your message will appear here…');preview.append(text);}
   else{
    if(!validEmbed){preview.classList.add('is-empty');text.textContent='Pick an embed from your library to see it here.';preview.append(text);return;}
-   preview.style.borderColor=doc.color||'#ff65ad';const title=document.createElement('strong');formatted(title,doc.title);formatted(text,doc.description);preview.append(title,text);
+   preview.style.borderColor=form.elements.custom_color.checked?form.elements.accent_color.value:doc.color||'#ff65ad';const title=document.createElement('strong');formatted(title,doc.title);formatted(text,doc.description);preview.append(title,text);
    const fields=document.createElement('div');fields.className='preview-embed-fields';
    for(const field of doc.fields||[]){const item=document.createElement('div'),title=document.createElement('strong'),value=document.createElement('p');item.className=field.inline?'is-inline':'';formatted(title,field.name);formatted(value,field.value);item.append(title,value);fields.append(item);}preview.append(fields);
-   if(doc.image||doc.thumbnail){const media=document.createElement('p');media.className='preview-media-note';media.textContent=[doc.thumbnail?'Thumbnail':'',doc.image?'Image':''].filter(Boolean).join(' + ')+' included in this embed';preview.append(media);}
+   for(const key of ['thumbnail','image']){
+    const source=form.elements['appearance_'+key].value,url=source==='member'?data.memberAvatar:source==='server'?data.serverIcon:source==='template'?doc[key]:'';
+    if(!url)continue;
+    if(url.startsWith('/assets/')||/^https:\/\/cdn\.discordapp\.com\//.test(url)){
+     const image=document.createElement('img');image.src=url;image.alt=source==='member'?'Sample member profile picture':source==='server'?'Server icon':key;image.className='welcome-preview-'+key;image.addEventListener('error',()=>image.remove(),{once:true});if(key==='thumbnail')preview.prepend(image);else preview.append(image);
+    }else{const note=document.createElement('p');note.className='preview-media-note';note.textContent=key+' included in this embed';preview.append(note);}
+   }
    const footer=document.createElement('small');formatted(footer,doc.footer);preview.append(footer);
   }
   preview.classList.remove('is-empty');

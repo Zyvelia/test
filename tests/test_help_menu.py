@@ -16,6 +16,18 @@ class HelpTests(unittest.IsolatedAsyncioTestCase):
         self.view=HelpMenu(self.bot,10,1)
     async def asyncTearDown(self):self.view.stop();await self.bot.close();self.store.close();self.tmp.cleanup()
     def button(self,label):return next(c for c in self.view.children if isinstance(c,discord.ui.Button) and c.label==label)
+    async def test_guild_copies_have_unique_dropdown_values(self):
+        original=[c.qualified_name for c in self.view.commands(self.i)]
+        self.bot.tree.copy_global_to(guild=discord.Object(id=1))
+        self.assertEqual(original,[c.qualified_name for c in self.view.commands(self.i)])
+        for section in ('all','games','settings','moderation'):
+            self.view.section=section
+            self.view.draw(self.i)
+            for item in self.view.children:
+                if isinstance(item,discord.ui.Select):
+                    values=[option.value for option in item.options]
+                    self.assertEqual(len(values),len(set(values)))
+
     async def test_help_command_opens_private_menu(self):
         await self.bot.tree.get_command('help').callback(self.i)
         options=self.i.response.send_message.call_args.kwargs;self.assertTrue(options['ephemeral']);self.assertIsInstance(options['view'],HelpMenu)

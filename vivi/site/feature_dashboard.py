@@ -10,7 +10,7 @@ from vivi.core.settings import DEFAULTS,validate_resources
 from vivi.site.module_manager import title,DESCRIPTIONS,GROUPS,group_for,FAMILIES,family_for,family_navigation
 from vivi.site import embed_writer
 from vivi.site.website import asset_stamp
-from vivi.site.message_templates import expand,message_embed
+from vivi.site.message_templates import expand,message_embed,validate_appearance
 
 E=lambda value:html.escape(str(value),quote=True)
 PREFIXES={
@@ -97,6 +97,8 @@ class FeatureDashboard:
         store=self.service.store;guild=self.service.bot.get_guild(gid);configuration=store.settings(gid)
         channel=store.option(gid,kind+'_channel',configuration['welcome'] if kind=='welcome' and configuration else 0)
         mode=store.option(gid,kind+'_mode','text');text=store.option(gid,kind+'_text',DEFAULTS[kind+'_text']);snapshot=store.option(gid,kind+'_embed',{})
+        avatar=session.get('profile',{}).get('avatar','');uid=str(session.get('user_id',''))
+        member_avatar=f'https://cdn.discordapp.com/avatars/{uid}/{avatar}.png?size=256' if re.fullmatch(r'[0-9]{1,20}',uid) and re.fullmatch(r'(?:a_)?[a-f0-9]{32}',avatar) else 'https://cdn.discordapp.com/embed/avatars/0.png'
         documents={row['id']:row['data']['document'] for row in store.records(gid,embed_writer.KIND)};documents['']=snapshot
         result='<div class="message-workspace message-designer"><form action="/messages" method="post" id="message-composer">'+self.hidden(session,gid)+f'<input type="hidden" name="kind" value="{kind}">'
         result+=f'<header class="composer-header"><div><span class="eyebrow">Make an entrance</span><h3>{kind.title()} message</h3><span id="message-draft-state">No unsaved changes</span><p>Write it once. Make every {"hello" if kind=="welcome" else "goodbye"} feel personal.</p></div><label class="composer-switch"><input type="checkbox" name="enabled" value="yes"'+(' checked' if enabled(store,gid,kind) else '')+'><span>Automatic messages</span></label></header>'
@@ -110,7 +112,12 @@ class FeatureDashboard:
         if kind=='welcome':result+='<div class="welcome-card-option"><label><input type="checkbox" name="cards" value="yes"'+(' checked' if enabled(store,gid,'welcome_cards') else '')+f'><span>Add a welcome card<small>A personalized image alongside your text.</small></span></label><a href="/configure?guild={gid}&module=welcome_cards">Design card →</a></div>'
         result+='</section><section class="composer-section" data-message-mode="embed"'+(' hidden' if mode!='embed' else '')+'><label>Choose your embed '+self.select('template',[('',f'Current: {snapshot["name"]}' if snapshot else 'Choose a saved embed')]+[(ident,doc['name']) for ident,doc in documents.items() if ident], '')+'</label>'
         result+=f'<p class="field-hint">Pick a template from your shared library, or <a href="/embeds?guild={gid}" target="_blank" rel="noopener">create an embed →</a>.</p><button type="button" id="message-refresh-embeds">Refresh library</button><p id="embed-choice-status" role="status"></p><details class="embed-copy-note"><summary>How saved templates work</summary><p>A copy is saved with this message. After editing the library template, select it again here to apply its latest version.</p></details></section>'
-        result+=f'<div id="message-preview-data" hidden data-documents="{E(json.dumps(documents))}" data-server="{E(guild.name)}" data-count="{E(getattr(guild,"member_count",0) or 0)}"></div>'
+        appearance=store.option(gid,kind+'_appearance',{})
+        result+='<section class="composer-section" data-message-mode="embed"><h3>Personalize your embed</h3><p class="field-hint">Use the joining member’s profile picture or your server icon. Missing server icons are omitted.</p>'
+        for key,label in [('thumbnail','Corner thumbnail'),('image','Large image')]:
+            result+='<label>'+label+' '+self.select('appearance_'+key,[('template','Keep template image'),('member','Member profile picture'),('server','Server icon'),('none','No image')],appearance.get(key,'template'))+'</label>'
+        result+='<label><input type="checkbox" name="custom_color" value="yes"'+(' checked' if appearance.get('color') else '')+'> Custom accent color</label><label>Accent color <input type="color" name="accent_color" value="'+E(appearance.get('color') or '#ff65ad')+'"></label><p class="field-hint">Turn custom color off to keep the template’s color. Text welcome cards have their own Design card editor.</p></section>'
+        result+=f'<div id="message-preview-data" hidden data-documents="{E(json.dumps(documents))}" data-server="{E(guild.name)}" data-count="{E(getattr(guild,"member_count",0) or 0)}" data-member-avatar="{E(member_avatar)}" data-server-icon="{E(str(guild.icon.url) if getattr(guild,"icon",None) else "")}"></div>'
         result+='<footer class="composer-actions"><div><button name="action" value="save">Save settings</button><button type="button" id="message-send">Send to Discord →</button><button class="composer-preview-button" name="action" value="preview">Expanded preview</button></div><p>Save updates future automatic messages. Send posts your current draft once.</p><p id="message-send-status" role="status" aria-live="polite"></p></footer></form>'
         result+='<aside class="message-preview-panel"><div class="preview-heading"><h3>Live preview</h3><span class="preview-badge">LIVE</span></div><p class="preview-channel" id="message-preview-channel"></p><div class="discord-preview-shell"><div class="preview-author"><img src="/assets/vivi-avatar.png" alt="" width="36" height="36"><strong>Vivi</strong><span>APP</span><small>Sample message</small></div><article class="embed-preview" id="message-live-preview" aria-live="polite"></article></div><p class="field-hint">Preview uses a sample member. Sending uses your Discord profile, without pinging anyone.</p><details class="message-help"><summary>Before you turn it on</summary><p>Vivi needs View Channel and Send Messages, plus Embed Links for embeds or Attach Files for cards. You can save a draft while automatic messages are off.</p></details></aside></div>'
         result+='<dialog id="confirm-message-send" aria-labelledby="confirm-message-title"><span class="eyebrow">One message, right now</span><h2 id="confirm-message-title">Send to Discord?</h2><p id="confirm-message-destination"></p><p>The member placeholders will use your profile. This will not save your settings or enable automatic messages.</p><div class="send-dialog-actions"><button type="button" id="confirm-message-cancel">Cancel</button><button type="button" id="confirm-message-submit">Confirm send</button></div></dialog><script src="/assets/message-preview.js?v='+asset_stamp("message-preview.js")+'" defer></script>'
@@ -121,18 +128,19 @@ class FeatureDashboard:
         if kind not in {'welcome','goodbye'}:raise web.HTTPBadRequest(text='Invalid message type.')
         try:
             mode=data.get('mode');text=str(data.get('text',''));channel_id=int(data.get('channel',0));on=data.get('enabled')=='yes';cards=kind=='welcome' and data.get('cards')=='yes'
+            appearance=validate_appearance(dict(color=str(data.get('accent_color','#ff65ad')) if data.get('custom_color')=='yes' else '',thumbnail=str(data.get('appearance_thumbnail','template')),image=str(data.get('appearance_image','template'))))
             validate_resources(store,guild,kind+'_channel',channel_id);validate_resources(store,guild,kind+'_mode',mode);validate_resources(store,guild,kind+'_text',text)
             snapshot=embed_writer.load(store,gid,str(data['template']))['data']['document'] if data.get('template') else store.option(gid,kind+'_embed',{})
             if mode=='embed' and not snapshot:raise ValueError('Choose a saved embed first.')
             if snapshot:embed_writer.validate(snapshot)
             if mode=='text' and not text.strip():raise ValueError('Write a message first.')
             if data.get('action')=='preview':
-                sample=SimpleNamespace(display_name='Sample member',mention='@Sample member',guild=SimpleNamespace(name=guild.name,member_count=getattr(guild,'member_count',0)))
+                sample=SimpleNamespace(display_name='Sample member',mention='@Sample member',display_avatar=SimpleNamespace(url='https://cdn.discordapp.com/embed/avatars/0.png'),guild=guild)
                 if mode=='embed':
-                    embed=message_embed(snapshot,sample);body=f'<article class="embed-preview" style="border-color:{E(snapshot["color"])}"><h3>{E(embed.title or "")}</h3><p>{E(embed.description or "")}</p>'+''.join(f'<h4>{E(f.name)}</h4><p>{E(f.value)}</p>' for f in embed.fields)+f'<small>{E(embed.footer.text or "")}</small></article><p>Text preview; Discord renders markdown and images when sent.</p>'
+                    embed=message_embed(snapshot,sample,appearance);body=f'<article class="embed-preview" style="border-color:{E(str(embed.color))}"><h3>{E(embed.title or "")}</h3><p>{E(embed.description or "")}</p>'+''.join(f'<h4>{E(f.name)}</h4><p>{E(f.value)}</p>' for f in embed.fields)+f'<small>{E(embed.footer.text or "")}</small></article><p>Text preview; Discord renders markdown and images when sent.</p>'
                 else:body=f'<article class="embed-preview"><p>{E(expand(text,sample))}</p></article>'
                 return self.page('<h2>Message preview</h2><p>Nothing was saved or sent.</p>'+body+f'<p><a href="/configure?guild={gid}&module={kind}">Back to saved settings</a> · Use your browser’s Back button to keep this draft.</p>')
-            if data.get('action')=='send':return await self.send_draft_message(request,data,session,gid,guild,kind,mode,text,snapshot,cards,channel_id)
+            if data.get('action')=='send':return await self.send_draft_message(request,data,session,gid,guild,kind,mode,text,snapshot,cards,channel_id,appearance)
             if data.get('action')!='save':raise ValueError('Unknown action.')
             channel=guild.get_channel(channel_id)
             if on:
@@ -141,7 +149,7 @@ class FeatureDashboard:
                 if not permissions.view_channel or not permissions.send_messages:raise ValueError('Vivi needs View Channel and Send Messages in this channel.')
                 if mode=='embed' and not permissions.embed_links:raise ValueError('Vivi needs Embed Links in this channel.')
                 if mode=='text' and cards and not permissions.attach_files:raise ValueError('Vivi needs Attach Files for welcome cards.')
-            values={kind+'_channel':channel_id,kind+'_mode':mode,kind+'_text':text,kind+'_embed':snapshot,'feature:'+kind:on}
+            values={kind+'_channel':channel_id,kind+'_mode':mode,kind+'_text':text,kind+'_embed':snapshot,kind+'_appearance':appearance,'feature:'+kind:on}
             if kind=='welcome':values['feature:welcome_cards']=cards
             # Validate everything before one transaction and one history entry.
             before=store.export_config(gid)
@@ -152,7 +160,7 @@ class FeatureDashboard:
         except (ValueError,TypeError) as error:raise web.HTTPBadRequest(text=str(error))
         raise web.HTTPSeeOther(f'/configure?guild={gid}&module={kind}&saved=yes')
 
-    async def send_draft_message(self,request,data,session,gid,guild,kind,mode,text,snapshot,cards,channel_id):
+    async def send_draft_message(self,request,data,session,gid,guild,kind,mode,text,snapshot,cards,channel_id,appearance):
         if data.get('confirm_send')!='yes':raise ValueError('Confirm the destination before sending.')
         channel=guild.get_channel(channel_id)
         if not isinstance(channel,discord.TextChannel):raise ValueError('Choose a destination text channel in this server.')
@@ -165,7 +173,7 @@ class FeatureDashboard:
             if mode=='text' and cards and not permissions.attach_files:raise ValueError('Vivi needs Attach Files for welcome cards.')
             from vivi.site.message_templates import cut
             options=dict(allowed_mentions=discord.AllowedMentions.none())
-            if mode=='embed':options['embed']=message_embed(snapshot,member)
+            if mode=='embed':options['embed']=message_embed(snapshot,member,appearance)
             else:
                 options['content']=cut(expand(text,member,mention=True),2000)
                 if cards:

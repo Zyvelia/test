@@ -20,6 +20,7 @@ FEATURES = {
     'raid_protection': False, 'mention_protection': False, 'warning_thresholds': False, 'global_bans':False,
 }
 OPTION_TYPES = {
+    'welcome_appearance':dict,'goodbye_appearance':dict,
     'scam_image_distance':int,
     'welcome_channel':int, 'welcome_mode':str, 'goodbye_mode':str, 'welcome_embed':dict, 'goodbye_embed':dict,
     'welcome_text': str, 'welcome_color': str, 'goodbye_channel': int, 'goodbye_text': str,
@@ -72,6 +73,9 @@ def validate_option(key, value):
         return
     if key not in OPTION_TYPES or type(value) is not OPTION_TYPES[key]: raise ValueError('Unknown setting or invalid type.')
     if isinstance(value,str) and len(value)>1800: raise ValueError('Setting is too long.')
+    if key in {'welcome_appearance','goodbye_appearance'}:
+        from vivi.site.message_templates import validate_appearance
+        validate_appearance(value)
     if key in {'welcome_embed','goodbye_embed'}:
         if value:
             from vivi.site.embed_writer import validate

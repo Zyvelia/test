@@ -286,3 +286,5 @@ Feature code is grouped under `vivi/core`, `vivi/server`, `vivi/games` and `vivi
 ### Staff workspace and Vivi artwork
 
 The dashboard now has a server home card, staff-only case search/details, reports and appeals, and a ticket list with status, priority, claimant and age. Welcome/goodbye editors preview messages live; welcome cards include a neon Vivi layout. The saved embed library remains shared with `/embed`, and disabling modules preserves their settings. Windows tray artwork is included as PNG and multi-size ICO. See [the staff dashboard guide](docs/STAFF-DASHBOARD.md).
+
+Welcome and goodbye embed editors also offer dynamic member-avatar/server-icon thumbnails and large images, an optional accent color, and a live preview. These settings are shared by automatic messages and confirmed dashboard sends; template images and colors remain the default.

@@ -33,3 +33,7 @@
 .message-format input{inset:0;width:100%;height:100%;margin:0;padding:0;cursor:pointer;z-index:1;border:0}@media(max-width:550px){.composer-header{flex-wrap:wrap}.composer-header .composer-switch{max-width:none}}
 .message-designer .composer-switch input[type=checkbox]{width:36px;min-width:36px;height:21px;box-sizing:border-box}
 .message-designer #message-refresh-embeds{margin:10px 0 0;padding:7px 10px;min-height:30px;font-size:11px;border-color:var(--line);color:var(--muted)}
+
+.message-designer .welcome-preview-thumbnail{width:80px;height:80px;object-fit:cover;border-radius:8px;float:right;margin:0 0 12px 12px}
+.message-designer .welcome-preview-image{display:block;max-width:100%;max-height:280px;object-fit:contain;border-radius:8px;margin:12px 0}
+.message-designer input[type=color]{width:80px;height:40px;padding:3px}

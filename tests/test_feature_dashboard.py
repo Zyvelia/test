@@ -31,6 +31,29 @@ class FeatureDashboardTests(unittest.IsolatedAsyncioTestCase):
     def post(self,**extra):
         data=dict(csrf='good',guild='1',kind='welcome',channel='3',mode='text',text='Hi {member} in {server}!',action='save',enabled='yes');data.update(extra)
         return NS(cookies={'vivi_session':'sid'},headers={},post=AsyncMock(return_value=data))
+    async def test_appearance_saved_and_used_by_join_without_mutating_library(self):
+        self.member.display_avatar=NS(url='https://cdn.discordapp.com/avatars/20/avatar.png')
+        self.guild.icon=NS(url='https://cdn.discordapp.com/icons/1/icon.png')
+        ident=embed_writer.save(self.store,1,self.doc,10)
+        with self.assertRaises(web.HTTPSeeOther):
+            await self.dashboard.save_messages(self.post(mode='embed',template=ident,appearance_thumbnail='member',appearance_image='server',custom_color='yes',accent_color='#123456'))
+        self.bot.community.operations.on_join=AsyncMock()
+        await self.bot.community.on_join(self.member)
+        embed=self.channel.send.call_args.kwargs['embed']
+        self.assertEqual(embed.thumbnail.url,self.member.display_avatar.url)
+        self.assertEqual(embed.image.url,self.guild.icon.url)
+        self.assertEqual(embed.color.value,0x123456)
+        self.assertEqual(embed_writer.load(self.store,1,ident)['data']['document']['color'],'#ff65ad')
+        for bad in ({'color':'red'},{'image':'external'},{'thumbnail':[]},{'unexpected':True}):
+            with self.assertRaises(ValueError):validate_option('welcome_appearance',bad)
+
+    async def test_missing_icon_and_explicit_no_image_and_template_defaults(self):
+        document={**self.doc,'thumbnail':'https://example.com/old.png'}
+        self.assertEqual(message_embed(document,self.member).thumbnail.url,document['thumbnail'])
+        embed=message_embed(document,self.member,dict(thumbnail='none',image='server'))
+        self.assertIsNone(embed.thumbnail.url)
+        self.assertIsNone(embed.image.url)
+
     async def test_every_active_module_has_a_configure_page(self):
         for feature in FEATURES:
             if feature=='faq':continue
