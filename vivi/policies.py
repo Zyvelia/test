@@ -2,7 +2,6 @@
 from html import escape
 
 OPERATOR='ZyVelia'
-OPERATOR_LOCATION='Massachusetts, United States'
 EMAIL='Vivi-Roseveil@proton.me'
 SUPPORT_SERVER='https://discord.gg/MWEJm7yJ4x'
 UPDATED='November 7, 2026'
@@ -10,7 +9,7 @@ UPDATED='November 7, 2026'
 
 def contact_html():
     return (f'<section class="help-callout" aria-labelledby="contact-title"><h2 id="contact-title">Contact Vivi</h2>'
-            f'<p>Operated by <strong>{escape(OPERATOR)}</strong> in {escape(OPERATOR_LOCATION)}.</p>'
+            f'<p>Operated by <strong>{escape(OPERATOR)}</strong>.</p>'
             f'<p>Email <a href="mailto:{escape(EMAIL,quote=True)}">{escape(EMAIL)}</a> for support, privacy questions, '
             'data requests or concerns about Vivi.</p>'
             f'<p><a href="{SUPPORT_SERVER}">Join VELVET RUINS on Discord</a> for community support.</p>'
@@ -20,7 +19,7 @@ def contact_html():
 
 PRIVACY=[
  ('Who operates Vivi and what this covers',
-  'ZyVelia operates Vivi, its connected website and dashboard from Massachusetts, United States. This policy explains how that service handles information. '
+  'ZyVelia operates Vivi, its connected website and dashboard. This policy explains how that service handles information. '
   'Server administrators choose which optional features to enable and control their own server records. '
   'Independently hosted copies of the open-source software are operated by their respective hosts; contact that host for its practices.'),
  ('Information Vivi processes',
@@ -61,7 +60,7 @@ PRIVACY=[
   'There is no single fixed deletion period for all record types. Backups and exports can retain earlier copies after an active record is deleted. '
   'The operator must separately review those copies and prevent deleted information from being unnecessarily restored. '
   'Encrypted full-data backups are an optional feature, not a promise that every file, database or export is encrypted. '
-  'The operator’s location does not guarantee that all information stays in Massachusetts or the United States. Storage and processing locations depend on hosting and external providers; contact ZyVelia for the current deployment details.'),
+  'Information may be processed outside the United States. Storage and processing locations depend on hosting and external providers; contact ZyVelia for the current deployment details.'),
  ('Your choices and data requests',
   'You can choose whether to supply optional profile details, birthday or timezone information, change supported profile visibility, '
   'opt out of supported leaderboards and disable or clear AI memory. Use /tools delete_data in the relevant server and confirm the request. '
@@ -75,7 +74,7 @@ PRIVACY=[
  ('United States privacy requests',
   'You can contact ZyVelia to ask about, access, correct or request deletion of information held about your use of Vivi. '
   'Whether a particular state or federal privacy law applies depends on the service and your circumstances; '
-  'being based in Massachusetts does not by itself give every user the same statutory rights. '
+  'users do not all have the same statutory rights. '
   'Where applicable law provides additional rights or response deadlines, those requirements apply. '
   'If you believe a request was not handled correctly, reply to the contact email asking for a review.'),
  ('Age, security and changes',
@@ -124,7 +123,7 @@ TERMS=[
   'Where practical, contact the operator to resolve an issue or request review of a restriction. '
   'Stopping use or removing Vivi from a server does not by itself delete all retained records; see the Privacy Policy.'),
  ('Applicable law and resolving concerns',
-  'Vivi is operated from Massachusetts, United States. To the extent permitted by law, these terms are governed by '
+  'To the extent permitted by law, these terms are governed by '
   'United States federal law and the laws of the Commonwealth of Massachusetts. '
   'This does not override mandatory protections that apply where you live or limit rights that cannot legally be waived. '
   'Contact ZyVelia by email to try to resolve a concern. These terms do not require private arbitration or waive class-action rights.'),
