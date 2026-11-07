@@ -340,15 +340,20 @@ class Community:
         from vivi.site.message_templates import expand,message_embed
         text=expand(text,member,mention=True)[:2000]
         try:
-            if self.store.option(guild.id,'welcome_mode','text')=='embed' and self.store.option(guild.id,'welcome_embed',{}):
-                await channel.send(embed=message_embed(self.store.option(guild.id,'welcome_embed',{}),member,self.store.option(guild.id,'welcome_appearance',{})),allowed_mentions=discord.AllowedMentions.none())
-            elif enabled(self.store,guild.id,'welcome_cards'):
+            is_embed=self.store.option(guild.id,'welcome_mode','text')=='embed' and self.store.option(guild.id,'welcome_embed',{})
+            options=dict(allowed_mentions=discord.AllowedMentions.none() if is_embed else discord.AllowedMentions(users=[member],roles=False,everyone=False))
+            if is_embed:options['embed']=message_embed(self.store.option(guild.id,'welcome_embed',{}),member,self.store.option(guild.id,'welcome_appearance',{}))
+            if enabled(self.store,guild.id,'welcome_cards'):
                 avatar=await member.display_avatar.with_size(256).with_format('png').read()
                 data=await asyncio.to_thread(card_bytes,member.display_name,guild.name,
                     text.replace(member.mention,member.display_name),self.store.option(guild.id,'welcome_color','#87CEEB'),avatar,tr(language,'Welcome, {name}!',name=member.display_name[:30]),self.store.option(guild.id,'branding',{}).get('name','Vivi'),self.store.option(guild.id,'welcome_layout',None))
-                await channel.send(text,file=discord.File(io.BytesIO(data),filename='welcome.png'),
-                                   allowed_mentions=discord.AllowedMentions(users=[member],roles=False,everyone=False))
-            else: await channel.send(text,allowed_mentions=discord.AllowedMentions(users=[member],roles=False,everyone=False))
+                options['file']=discord.File(io.BytesIO(data),filename='welcome.png')
+            try:
+                if is_embed:await channel.send(**options)
+                else:await channel.send(text,**options)
+            finally:
+                if options.get('file'):
+                    options['file'].close();options['file'].fp.close()
         except (discord.HTTPException,OSError): LOG.warning('Welcome message/card failed in %s',guild.id)
 
     async def on_member_remove(self,member):
@@ -548,7 +553,7 @@ def register_extra(bot):
         return True
 
     async def feature_choices(i,current):
-        return [app_commands.Choice(name=x,value=x) for x in FEATURES if current.lower() in x][:25]
+        return [app_commands.Choice(name=x,value=x) for x in FEATURES if x!='welcome_cards' and current.lower() in x][:25]
 
     @admin_command('feature','Enable or disable one feature for this server. AI starts disabled.')
     @app_commands.autocomplete(name=feature_choices)
@@ -572,7 +577,7 @@ def register_extra(bot):
 
     @admin_command('features','Show all per-server feature switches.')
     async def features(i:discord.Interaction):
-        await reply(i,'\n'.join(f'{name}: {"ON" if enabled(store,i.guild_id,name) else "OFF"}' for name in FEATURES))
+        await reply(i,'\n'.join(f'{name}: {"ON" if enabled(store,i.guild_id,name) else "OFF"}' for name in FEATURES if name!='welcome_cards'))
 
     async def setting_choices(i,current):
         from vivi.core.features import OPTION_TYPES

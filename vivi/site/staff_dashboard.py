@@ -50,7 +50,7 @@ class StaffDashboard:
         if not (moderate if area=='moderation' else support if area=='tickets' else moderate or support):raise web.HTTPForbidden(text='This page is available only to authorized server staff.')
         return session,gid,guild,dict(admin=admin,moderation=moderate,tickets=support)
     def server_home_card(self,gid):
-        guild=self.service.bot.get_guild(gid);count=getattr(guild,'member_count',None);on=sum(module_enabled(self,gid,key) for key in FEATURES if key!='faq');total=len(FEATURES)-1
+        guild=self.service.bot.get_guild(gid);count=getattr(guild,'member_count',None);on=sum(module_enabled(self,gid,key) for key in FEATURES if key not in {'faq','welcome_cards'});total=len(FEATURES)-2
         ready=self.service.bot.is_ready()
         return f'<section class="server-home-card" aria-label="Server overview"><div><span class="eyebrow">Your server at a glance</span><h2>{E(guild.name)}</h2></div><dl><div><dt>Members</dt><dd>{E(count if count is not None else "Unavailable")}</dd></div><div><dt>Vivi status</dt><dd><span class="small-status"><i class="status-dot'+('' if ready else ' is-offline')+f'"></i><span data-home-status>{"Online" if ready else "Offline"}</span></span></dd></div><div><dt>Enabled modules</dt><dd><span data-enabled-count>{on}</span> <small>/ {total}</small></dd></div></dl></section>'
     def staff_navigation(self,gid,access,active='home'):

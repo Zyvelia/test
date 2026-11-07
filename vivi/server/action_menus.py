@@ -320,7 +320,7 @@ class SettingsMenu(ActionMenu):
         self.clear_items()
         from vivi.core.features import FEATURES,OPTION_TYPES,enabled
         def feature_on(key):return self.bot.community.global_bans.participating(i.guild) if key=='global_bans' else enabled(self.bot.store,i.guild_id,key)
-        keys=list(FEATURES) if self.tab=='features' else [key for key in OPTION_TYPES if key!='faq']
+        keys=[key for key in FEATURES if key!='welcome_cards'] if self.tab=='features' else [key for key in OPTION_TYPES if key!='faq']
         last=max(0,(len(keys)-1)//PAGE);self.page=min(self.page,last);keys=keys[self.page*PAGE:(self.page+1)*PAGE]
         embed=discord.Embed(title='Vivi · '+('Server administration' if getattr(self,'entry_name','')=='admin' else 'Server settings'),description='Manage feature switches and detailed settings here. Changes share the bot’s existing configuration and appear in the dashboard.',color=0xff65ad)
         if self.key:

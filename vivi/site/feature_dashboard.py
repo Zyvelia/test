@@ -42,7 +42,7 @@ class FeatureDashboard:
             if marker not in markup:return ''
             return '<details open><summary>'+heading+'</summary>'+markup.split(marker,1)[1].split('</details>',1)[0]+'</details>'
         result=''
-        if feature=='welcome_cards':
+        if feature=='welcome':
             markup=self.studio_forms(gid,session)
             result=markup.split('<h2>Welcome-card layout editor</h2>',1)[1].split('<h2>Announcement builder</h2>',1)[0]
         if feature=='xp':result+=panel(self.advanced_forms(gid,session),'Per-channel XP')
@@ -58,6 +58,9 @@ class FeatureDashboard:
         try:gid=int(request.query.get('guild',''))
         except ValueError:raise web.HTTPBadRequest(text='Choose a server.')
         feature=request.query.get('module','')
+        if feature=='welcome_cards':
+            await self.authorize(request,gid)
+            raise web.HTTPSeeOther(f'/configure?guild={gid}&module=welcome#welcome-card-design')
         if feature not in FEATURES or feature=='faq':raise web.HTTPNotFound(text='Unknown module.')
         session=await self.authorize(request,gid);guild=self.service.bot.get_guild(gid);store=self.service.store
         content=f'<a href="/modules?guild={gid}">← All modules</a><div class="modules-intro"><div><span class="eyebrow">Customize your server</span><h2>{E(title(feature))}</h2><p>{E(DESCRIPTIONS.get(feature,""))}</p></div><a class="btn btn-ghost" href="/embeds?guild={gid}">Embed writer →</a></div>'
@@ -65,7 +68,10 @@ class FeatureDashboard:
         content+='<nav class="related-modules" aria-label="Related settings"><strong>'+E(family[0])+'</strong>'+''.join(f'<a href="/configure?guild={gid}&module={key}"'+(' aria-current="page"' if key==feature else '')+f'>{E(title(key))}</a>' for key in family[1])+'</nav>'
         content+=f'<div data-dashboard-sync data-guild="{gid}" data-revision="{self.config_revision(gid)}"><p class="sync-status" role="status">Settings shared with Discord. Checking for updates automatically.</p></div>'
         if request.query.get('saved')=='yes':content+='<p role="status">Settings saved. New events use these settings immediately.</p>'
-        if feature in {'welcome','goodbye'}:return self.feature_page(gid,feature,content+self.message_composer(gid,session,feature))
+        if feature in {'welcome','goodbye'}:
+            content+=self.message_composer(gid,session,feature)
+            if feature=='welcome':content+='<section id="welcome-card-design"><h3>Welcome card design</h3><p>Cards are part of Welcome. Enable them with Add a welcome card above; turning Welcome off pauses both messages and cards.</p>'+self.related_editors(gid,session,feature)+'</section>'
+            return self.feature_page(gid,feature,content)
         on=enabled(store,gid,feature)
         if feature!='global_bans':content+='<form action="/feature" method="post">'+self.hidden(session,gid)+f'<input type="hidden" name="feature" value="{feature}"><input type="hidden" name="enabled" value="{str(not on).lower()}"><input type="hidden" name="return" value="configure"><p>Feature is <strong>{"enabled" if on else "disabled"}</strong>.</p><button>{"Disable" if on else "Enable"} {E(title(feature))}</button></form>'
         keys=[] if feature=='welcome_cards' else [key for key in OPTION_TYPES if any(key.startswith(prefix) for prefix in PREFIXES.get(feature,())) and OPTION_TYPES[key] is not dict]
@@ -109,14 +115,15 @@ class FeatureDashboard:
         result+='</fieldset><section class="composer-section" data-message-mode="text"'+(' hidden' if mode!='text' else '')+f'><div class="field-heading"><label for="welcome-message-text">Your message</label><span id="message-character-count">{len(text)} / 1,800</span></div><textarea id="welcome-message-text" name="text" rows="6" maxlength="1800" placeholder="Welcome {{member}} to {{server}}!">{E(text)}</textarea><div class="placeholder-chips"><span>Insert:</span>'
         for token,label in [('member','@Member'),('username','Username'),('server','Server'),('member_count','Member count')]:result+=f'<button type="button" data-insert-token="{token}" title="Insert {{{token}}}">{label}</button>'
         result+='</div><p class="field-hint">Click a chip to insert a placeholder at your cursor.</p>'
-        if kind=='welcome':result+='<div class="welcome-card-option"><label><input type="checkbox" name="cards" value="yes"'+(' checked' if enabled(store,gid,'welcome_cards') else '')+f'><span>Add a welcome card<small>A personalized image alongside your text.</small></span></label><a href="/configure?guild={gid}&module=welcome_cards">Design card →</a></div>'
+
         result+='</section><section class="composer-section" data-message-mode="embed"'+(' hidden' if mode!='embed' else '')+'><label>Choose your embed '+self.select('template',[('',f'Current: {snapshot["name"]}' if snapshot else 'Choose a saved embed')]+[(ident,doc['name']) for ident,doc in documents.items() if ident], '')+'</label>'
         result+=f'<p class="field-hint">Pick a template from your shared library, or <a href="/embeds?guild={gid}" target="_blank" rel="noopener">create an embed →</a>.</p><button type="button" id="message-refresh-embeds">Refresh library</button><p id="embed-choice-status" role="status"></p><details class="embed-copy-note"><summary>How saved templates work</summary><p>A copy is saved with this message. After editing the library template, select it again here to apply its latest version.</p></details></section>'
+        if kind=='welcome':result+='<section class="composer-section"><div class="welcome-card-option"><label><input type="checkbox" name="cards" value="yes"'+(' checked' if enabled(store,gid,'welcome_cards') else '')+f'><span>Add a welcome card<small>A personalized image alongside your message.</small></span></label><a href="#welcome-card-design">Design card →</a></div><p class="field-hint">Works with either text or embeds. The Welcome switch controls both.</p></section>'
         appearance=store.option(gid,kind+'_appearance',{})
         result+='<section class="composer-section" data-message-mode="embed"><h3>Personalize your embed</h3><p class="field-hint">Use the joining member’s profile picture or your server icon. Missing server icons are omitted.</p>'
         for key,label in [('thumbnail','Corner thumbnail'),('image','Large image')]:
             result+='<label>'+label+' '+self.select('appearance_'+key,[('template','Keep template image'),('member','Member profile picture'),('server','Server icon'),('none','No image')],appearance.get(key,'template'))+'</label>'
-        result+='<label><input type="checkbox" name="custom_color" value="yes"'+(' checked' if appearance.get('color') else '')+'> Custom accent color</label><label>Accent color <input type="color" name="accent_color" value="'+E(appearance.get('color') or '#ff65ad')+'"></label><p class="field-hint">Turn custom color off to keep the template’s color. Text welcome cards have their own Design card editor.</p></section>'
+        result+='<label><input type="checkbox" name="custom_color" value="yes"'+(' checked' if appearance.get('color') else '')+'> Custom accent color</label><label>Accent color <input type="color" name="accent_color" value="'+E(appearance.get('color') or '#ff65ad')+'"></label><p class="field-hint">Turn custom color off to keep the template’s color. Welcome cards have their own Design card editor below.</p></section>'
         result+=f'<div id="message-preview-data" hidden data-documents="{E(json.dumps(documents))}" data-server="{E(guild.name)}" data-count="{E(getattr(guild,"member_count",0) or 0)}" data-member-avatar="{E(member_avatar)}" data-server-icon="{E(str(guild.icon.url) if getattr(guild,"icon",None) else "")}"></div>'
         result+='<footer class="composer-actions"><div><button name="action" value="save">Save settings</button><button type="button" id="message-send">Send to Discord →</button><button class="composer-preview-button" name="action" value="preview">Expanded preview</button></div><p>Save updates future automatic messages. Send posts your current draft once.</p><p id="message-send-status" role="status" aria-live="polite"></p></footer></form>'
         result+='<aside class="message-preview-panel"><div class="preview-heading"><h3>Live preview</h3><span class="preview-badge">LIVE</span></div><p class="preview-channel" id="message-preview-channel"></p><div class="discord-preview-shell"><div class="preview-author"><img src="/assets/vivi-avatar.png" alt="" width="36" height="36"><strong>Vivi</strong><span>APP</span><small>Sample message</small></div><article class="embed-preview" id="message-live-preview" aria-live="polite"></article></div><p class="field-hint">Preview uses a sample member. Sending uses your Discord profile, without pinging anyone.</p><details class="message-help"><summary>Before you turn it on</summary><p>Vivi needs View Channel and Send Messages, plus Embed Links for embeds or Attach Files for cards. You can save a draft while automatic messages are off.</p></details></aside></div>'
@@ -148,7 +155,7 @@ class FeatureDashboard:
                 permissions=channel.permissions_for(guild.me)
                 if not permissions.view_channel or not permissions.send_messages:raise ValueError('Vivi needs View Channel and Send Messages in this channel.')
                 if mode=='embed' and not permissions.embed_links:raise ValueError('Vivi needs Embed Links in this channel.')
-                if mode=='text' and cards and not permissions.attach_files:raise ValueError('Vivi needs Attach Files for welcome cards.')
+                if cards and not permissions.attach_files:raise ValueError('Vivi needs Attach Files for welcome cards.')
             values={kind+'_channel':channel_id,kind+'_mode':mode,kind+'_text':text,kind+'_embed':snapshot,kind+'_appearance':appearance,'feature:'+kind:on}
             if kind=='welcome':values['feature:welcome_cards']=cards
             # Validate everything before one transaction and one history entry.
@@ -170,20 +177,20 @@ class FeatureDashboard:
             permissions=channel.permissions_for(guild.me)
             if not permissions.view_channel or not permissions.send_messages:raise ValueError('Vivi needs View Channel and Send Messages in this channel.')
             if mode=='embed' and not permissions.embed_links:raise ValueError('Vivi needs Embed Links in this channel.')
-            if mode=='text' and cards and not permissions.attach_files:raise ValueError('Vivi needs Attach Files for welcome cards.')
+            if cards and not permissions.attach_files:raise ValueError('Vivi needs Attach Files for welcome cards.')
             from vivi.site.message_templates import cut
             options=dict(allowed_mentions=discord.AllowedMentions.none())
             if mode=='embed':options['embed']=message_embed(snapshot,member,appearance)
             else:
                 options['content']=cut(expand(text,member,mention=True),2000)
-                if cards:
-                    import asyncio,io
-                    from vivi.site.studio_layout import render_layout,DEFAULT_LAYOUT
-                    avatar=await member.display_avatar.with_size(256).with_format('png').read()
-                    layout=self.service.store.option(gid,'welcome_layout',DEFAULT_LAYOUT)
-                    try:image=await asyncio.to_thread(render_layout,layout,member.display_name,guild.name,expand(text,member),avatar,None,self.service.store.option(gid,'branding',{}).get('name','Vivi'))
-                    except (OSError,ValueError):raise web.HTTPBadGateway(text='The welcome card could not be generated. No message was sent.') from None
-                    options['file']=discord.File(io.BytesIO(image),filename='vivi-welcome.png')
+            if cards:
+                import asyncio,io
+                from vivi.site.studio_layout import render_layout,DEFAULT_LAYOUT
+                avatar=await member.display_avatar.with_size(256).with_format('png').read()
+                layout=self.service.store.option(gid,'welcome_layout',DEFAULT_LAYOUT)
+                try:image=await asyncio.to_thread(render_layout,layout,member.display_name,guild.name,expand(text,member),avatar,None,self.service.store.option(gid,'branding',{}).get('name','Vivi'))
+                except (OSError,ValueError):raise web.HTTPBadGateway(text='The welcome card could not be generated. No message was sent.') from None
+                options['file']=discord.File(io.BytesIO(image),filename='vivi-welcome.png')
             try:message=await channel.send(**options)
             finally:
                 if options.get('file'):

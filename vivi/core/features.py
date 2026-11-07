@@ -9,6 +9,7 @@ FEATURES = {
     'scam_images':False,
     'invite_tracking':False,'competitions':False,'teams':False,'library':False,'profiles':False,
     'staff_reviews': False, 'lfg': False, 'timezone_directory': False, 'reminders': False,
+    # Retain the stored card preference for compatibility; it is a Welcome option, not a separate module.
     'welcome': True, 'welcome_cards': False, 'goodbye': False, 'autorole': False,
     'rules': False, 'faq': False, 'automod': False, 'moderation': True,
     'appeals': False, 'reports': False, 'roles': True, 'tickets': True,

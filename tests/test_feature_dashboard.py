@@ -56,7 +56,7 @@ class FeatureDashboardTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_every_active_module_has_a_configure_page(self):
         for feature in FEATURES:
-            if feature=='faq':continue
+            if feature in {'faq','welcome_cards'}:continue
             response=await self.dashboard.configure_module(self.request(feature));self.assertEqual(response.status,200);self.assertNotIn('secret-token',response.text)
     async def test_save_welcome_without_ticket_setup_and_runtime_delivery(self):
         self.assertIsNone(self.store.settings(1))
@@ -114,9 +114,11 @@ class FeatureDashboardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.settings(1)['welcome'],3)
 
     async def test_specialized_editors_are_inside_their_module_and_return_there(self):
-        for feature,action in [('welcome_cards','/studio/welcome'),('xp','/xp-channel'),('notifications','/subscription'),('custom_aliases','/aliases'),('tickets','/ticket-category')]:
+        for feature,action in [('welcome','/studio/welcome'),('xp','/xp-channel'),('notifications','/subscription'),('custom_aliases','/aliases'),('tickets','/ticket-category')]:
             response=await self.dashboard.configure_module(self.request(feature));self.assertIn('action="'+action+'"',response.text);self.assertIn('name="return_module" value="'+feature+'"',response.text)
-        response=await self.dashboard.configure_module(self.request('welcome_cards'))
+        with self.assertRaises(web.HTTPSeeOther) as redirect:await self.dashboard.configure_module(self.request('welcome_cards'))
+        self.assertEqual(redirect.exception.location,'/configure?guild=1&module=welcome#welcome-card-design')
+        response=await self.dashboard.configure_module(self.request('welcome'))
         self.assertNotIn('action="/studio/announcement"',response.text);self.assertIn('data-editor="welcome"',response.text)
 
     def sending_member(self):
@@ -139,6 +141,24 @@ class FeatureDashboardTests(unittest.IsolatedAsyncioTestCase):
         self.member.guild_permissions=discord.Permissions(administrator=True);self.channel.permissions_for.return_value=discord.Permissions.none()
         with self.assertRaises(web.HTTPBadRequest):await self.dashboard.save_messages(self.post(action='send',confirm_send='yes'))
         self.channel.send.assert_not_awaited()
+    async def test_welcome_switch_controls_embeds_and_cards_together(self):
+        import io
+        from PIL import Image
+        output=io.BytesIO();Image.new('RGB',(32,32),'pink').save(output,format='PNG')
+        asset=NS(read=AsyncMock(return_value=output.getvalue()));asset.with_size=lambda size:asset;asset.with_format=lambda format:asset
+        self.member.display_avatar=asset
+        ident=embed_writer.save(self.store,1,self.doc,10)
+        with self.assertRaises(web.HTTPSeeOther):await self.dashboard.save_messages(self.post(mode='embed',template=ident,cards='yes'))
+        self.bot.community.operations.on_join=AsyncMock()
+        await self.bot.community.on_join(self.member)
+        options=self.channel.send.call_args.kwargs
+        self.assertIn('embed',options);self.assertIn('file',options);self.assertTrue(options['file'].fp.closed)
+        self.store.set_option(1,'feature:welcome',False);self.channel.send.reset_mock()
+        await self.bot.community.on_join(self.member)
+        self.channel.send.assert_not_awaited()
+        self.assertTrue(self.store.option(1,'feature:welcome_cards'))
+        self.assertEqual(self.store.option(1,'welcome_embed')['name'],self.doc['name'])
+
     async def test_send_cards_closes_attachment_and_does_not_enable_automatic_messages(self):
         import io
         from PIL import Image
@@ -147,7 +167,10 @@ class FeatureDashboardTests(unittest.IsolatedAsyncioTestCase):
         files=[]
         async def send(**kwargs):files.append(kwargs['file']);self.assertTrue(kwargs['file'].fp.read(8).startswith(b'\x89PNG'));return NS(jump_url='https://discord.com/channels/1/3/100')
         self.channel.send.side_effect=send
-        await self.dashboard.save_messages(self.post(action='send',confirm_send='yes',cards='yes',enabled='no'))
+        self.store.set_option(1,'welcome_embed',self.doc)
+        for mode in ('text','embed'):
+            await self.dashboard.save_messages(self.post(action='send',confirm_send='yes',cards='yes',enabled='no',mode=mode))
+            self.assertEqual('embed' in self.channel.send.call_args.kwargs,mode=='embed')
         self.assertTrue(files[0].fp.closed);self.assertNotIn('feature:welcome',self.store.export_config(1)['options'])
     async def test_discord_send_failure_keeps_all_settings(self):
         self.sending_member();before=self.store.export_config(1);self.channel.send.side_effect=discord.Forbidden(NS(status=403,reason='Forbidden'),'Denied')

@@ -159,6 +159,7 @@ class Dashboard(StaffDashboard,DashboardAuth,FeatureDashboard,EmbedDashboard,Mod
         name=html.escape(self.service.bot.get_guild(guild).name)
         forms=[]
         for feature in FEATURES:
+            if feature=='welcome_cards':continue  # Card options belong to Welcome.
             on=enabled(self.service.store,guild,feature)
             if feature=='global_bans':
                 forms.append(f'<div class="module-card"><b>Global bans</b><a href="/modules?guild={guild}#module-global_bans">Manage owner participation →</a></div>');continue

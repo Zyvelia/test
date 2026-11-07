@@ -33,9 +33,10 @@ class ModuleManagerTests(unittest.IsolatedAsyncioTestCase):
         self.guild.name='<script>alert(1)</script>';response=await self.dashboard.modules(self.request('/modules?guild=1'))
         self.assertIn('&lt;script&gt;',response.text);self.assertNotIn('<script>alert(1)',response.text);self.assertNotIn('opaque-token',response.text)
         for feature in FEATURES:
-            if feature=='faq':continue
+            if feature in {'faq','welcome_cards'}:continue
             self.assertIn('data-feature-module="'+feature+'"',response.text);self.assertIn(feature,DESCRIPTIONS);self.assertTrue(group_for(feature))
         self.assertNotIn('data-feature-module="faq"',response.text)
+        self.assertNotIn('data-feature-module="welcome_cards"',response.text)
     async def test_ajax_toggles_update_shared_store_and_discord_changes_sync_back(self):
         response=await self.dashboard.feature(self.post(feature='games',enabled='true'))
         payload=json.loads(response.text);self.assertTrue(payload['enabled']);self.assertTrue(enabled(self.store,1,'games'))
@@ -75,7 +76,7 @@ class ModuleManagerTests(unittest.IsolatedAsyncioTestCase):
     async def test_related_features_are_nested_once_and_details_link_is_removed(self):
         from vivi.site.module_manager import FAMILIES
         keys=[key for _,children,_ in FAMILIES.values() for key in children]
-        self.assertEqual(set(keys),set(FEATURES)-{'faq'});self.assertEqual(len(keys),len(set(keys)))
+        self.assertEqual(set(keys),set(FEATURES)-{'faq','welcome_cards'});self.assertEqual(len(keys),len(set(keys)))
         response=await self.dashboard.modules(self.request('/modules?guild=1'))
         self.assertIn('data-module-family="welcome"',response.text);self.assertIn('data-module-family="moderation"',response.text)
         self.assertNotIn('Detailed settings →',response.text)
@@ -91,7 +92,9 @@ class ModuleManagerTests(unittest.IsolatedAsyncioTestCase):
     async def test_related_settings_pages_share_the_same_family_navigation(self):
         response=await self.dashboard.configure_module(self.request('/configure?guild=1&module=welcome'))
         self.assertIn('aria-label="Related settings"',response.text)
-        for key in ['welcome_cards','goodbye','autorole','rules','roles']:self.assertIn('module='+key,response.text)
+        self.assertNotIn('module=welcome_cards',response.text)
+        self.assertIn('id="welcome-card-design"',response.text)
+        for key in ['goodbye','autorole','rules','roles']:self.assertIn('module='+key,response.text)
 
     async def test_temporary_discord_errors_keep_signed_in_profile(self):
         for code,error in [(429,web.HTTPTooManyRequests),(503,web.HTTPServiceUnavailable)]:

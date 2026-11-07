@@ -8,7 +8,7 @@ and moderation remain on. Use `/admin features` to inspect your server and
 `/admin feature name:polls enabled:true` to enable a feature. Settings are scoped
 to each Discord server, not shared between servers.
 
-Feature names: `welcome`, `welcome_cards`, `goodbye`, `autorole`, `rules`, `faq`,
+Feature names: `welcome`, `goodbye`, `autorole`, `rules`, `faq`,
 `automod`, `moderation`, `appeals`, `reports`, `roles`, `tickets`, `polls`,
 `giveaways`, `suggestions`, `birthdays`, `spotlight`, `games`, `daily_questions`,
 `xp`, `economy`, `translation`, `ai`.
@@ -22,7 +22,7 @@ roles, invalid timezones, and invalid values are rejected.
 
 - `welcome_text`: supports `{member}` and `{server}`; up to 1,800 characters.
 - `welcome_color`: hex accent, for example `#87CEEB`.
-- Enable `welcome_cards` for generated PNG cards with the joining member's avatar.
+- In **Welcome**, select **Add a welcome card** for a generated PNG with the joining member's avatar. The card designer is on the same page. Cards work with text or embed messages and share the Welcome enable switch.
   Welcome messages must also be enabled; give the bot Attach Files permission.
 - `goodbye_channel`: destination channel ID; `goodbye_text` supports the same tokens.
 - `autorole`: a safe newcomer role ID; enable `autorole` to apply it on join.

@@ -24,7 +24,7 @@ DESCRIPTIONS={
  'staff_reviews':'Collect independent staff-conduct and blocklist appeal reviews.',
  'appeals':'Let members privately appeal their own moderation cases.',
  'reports':'Let members privately report concerns to the moderation team.',
- 'welcome':'Greet new members in the configured welcome channel.',
+ 'welcome':'Greet new members with text, embeds and optional personalized welcome cards.',
  'welcome_cards':'Include illustrated member cards in welcome messages.',
  'goodbye':'Post departure messages in your chosen channel.',
  'autorole':'Assign a configured safe role to new members.',
@@ -56,7 +56,7 @@ DESCRIPTIONS={
  'custom_aliases':'Register configured informational slash-command shortcuts.',
  'invite_tracking':'Estimate which invite brought a member into the server.'}
 FAMILIES={
- 'welcome':('Welcome & joining',['welcome','welcome_cards','goodbye','autorole','rules','roles','invite_tracking'],'Messages, welcome cards, newcomer roles and rules in one place.'),
+ 'welcome':('Welcome & joining',['welcome','goodbye','autorole','rules','roles','invite_tracking'],'Messages, welcome cards, newcomer roles and rules in one place.'),
  'moderation':('Moderation & safety',['moderation','automod','raid_protection','mention_protection','warning_thresholds','scam_images','reports','appeals','staff_reviews','global_bans'],'Moderation, automatic protection and staff review tools.'),
  'tickets':('Tickets & support',['tickets','ticket_tools'],'Ticket channels, staff tools, priorities and feedback.'),
  'profiles':('Levels & profiles',['xp','economy','profiles'],'XP, fictional currency and member appearance.'),
@@ -77,7 +77,7 @@ HINTS={
  'global_bans':'Only the server owner can enable this. Existing entries may be banned; Ban Members is required. Disabling does not undo existing bans.',
  'games':'Arcade: /games · Cards: /cards · Puzzles: /puzzles · Idle worlds: /idle.',
  'scam_images':'Add reference images in /settings → Setup & backups. Exact matching is the default.',
- 'welcome':'Customize the channel, text, saved embed and welcome card in Configure.',
+ 'welcome':'Customize welcome messages, embeds and cards together in Configure.',
  'welcome_cards':'Also enable Welcome and choose a welcome channel.',
  'goodbye':'Choose a goodbye channel and message.',
  'autorole':'Configure server channels and a safe role below Vivi.',
@@ -108,7 +108,7 @@ class ModuleManager:
         try:gid=int(request.query.get('guild',''))
         except ValueError:raise web.HTTPBadRequest(text='Invalid server ID.')
         await self.authorize(request,gid)
-        return web.json_response({'features':{key:module_enabled(self,gid,key) for key in FEATURES if key!='faq'},'revision':self.config_revision(gid)})
+        return web.json_response({'features':{key:module_enabled(self,gid,key) for key in FEATURES if key not in {'faq','welcome_cards'}},'revision':self.config_revision(gid)})
 
     async def modules(self,request):
         if not request.cookies.get('vivi_session'):
@@ -122,7 +122,7 @@ class ModuleManager:
         if state not in {'enabled','disabled'}:state='all'
         cards=[];card_keys=[];count=0;total=0
         for key in sorted(FEATURES,key=lambda key:(list(GROUPS).index(group_for(key)),title(key))):
-            if key=='faq':continue  # Retained legacy data has no active FAQ command module.
+            if key in {'faq','welcome_cards'}:continue  # Retained legacy data has no active FAQ command module.
             total+=1;on=module_enabled(self,gid,key);category=group_for(key);description=DESCRIPTIONS.get(key,'Enable '+title(key)+' for this server.')
             matches=(group=='all' or category==group) and (state=='all' or on==(state=='enabled')) and all(term in (title(key)+' '+description+' '+key+' '+category+' '+FAMILIES[family_for(key)][0]).lower() for term in query.lower().split())
             if matches:count+=1
