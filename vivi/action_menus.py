@@ -12,7 +12,7 @@ from .help_menu import visible
 PAGE=20
 TITLES={'community':'Community','ticket':'Tickets & support','profile':'Your profile','settings':'Server settings'}
 STAFF_COMMUNITY={'poll','poll_close','giveaway','giveaway_reroll','suggestion_decide','spotlight'}
-PUBLIC_ACTIONS={'rules','role_menu','poll','poll_close','giveaway','giveaway_reroll','suggest','suggestion_decide','spotlight','lfg'}
+PUBLIC_ACTIONS={'rules','role_menu','poll','poll_close','giveaway','giveaway_reroll','suggest','suggestion_decide','spotlight','lfg','role_button','ticket_panel'}
 
 class Invocation:
     """Give existing checks the selected action, while preserving Discord's response API."""
@@ -174,11 +174,16 @@ class FlowView(OwnedView):
         cancel.callback=cancel_action;self.add_item(cancel)
     async def interaction_check(self,i):return await super().interaction_check(i) and await self.flow.menu.interaction_check(i)
 
+def action_label(command):
+    root=command.qualified_name.split()[0]
+    prefix={'notify':'Notifications · ','alias':'Aliases · ','economy':'XP · '}.get(root,'')
+    return (prefix+command.name.replace('_',' ').title())[:100]
+
 class ActionMenu(OwnedView):
     def __init__(self,bot,kind,i):
         super().__init__(i.user.id,i.guild_id);self.bot=bot;self.kind=kind;self.guild_object=i.guild;self.page=0;self.selected=None;self.flow=None;self.actions=self.build_actions()
     def build_actions(self):
-        group=self.bot.menu_groups[self.kind] if self.kind!='settings' else self.bot.tree.get_command('admin')
+        group=self.bot.menu_groups[self.kind] if self.kind!='settings' else self.bot.menu_groups['admin']
         result={c.qualified_name:c for c in group.walk_commands() if isinstance(c,app_commands.Command)}
         extras={'community':['social'],'ticket':['support'],'profile':[],'settings':[]}[self.kind]
         for root in extras:
@@ -189,6 +194,11 @@ class ActionMenu(OwnedView):
             result.update(actions(self.bot))
             result.pop('admin feature',None);result.pop('admin features',None);result.pop('admin setting',None)
             result['setup']=self.bot.tree.get_command('setup')
+            result.update(self.bot.menu_commands)
+            result.update({c.qualified_name:c for c in self.bot.menu_groups['notify'].walk_commands() if isinstance(c,app_commands.Command)})
+            for name in ['embed','globalban']:
+                command=self.bot.tree.get_command(name)
+                if command:result[name]=command
         if self.kind=='profile':
             async def live_editor(i:discord.Interaction):
                 from .profile_editor import open_editor
@@ -212,7 +222,7 @@ class ActionMenu(OwnedView):
     def draw(self,i):
         self.clear_items();items=[(key,c) for key,c in self.actions.items() if allowed(self.bot,c,i)]
         last=max(0,(len(items)-1)//PAGE);self.page=min(max(self.page,0),last);items=items[self.page*PAGE:(self.page+1)*PAGE]
-        embed=discord.Embed(title='Vivi · '+TITLES[self.kind],description='Choose an action. Forms and confirmations stay private; public posts happen only after you confirm.',color=0xff65ad)
+        embed=discord.Embed(title='Vivi · '+('Server administration' if getattr(self,'entry_name','')=='admin' else TITLES[self.kind]),description='Choose an action. Forms and confirmations stay private; public posts happen only after you confirm.',color=0xff65ad)
         if self.kind=='profile':
             p=self.bot.store.profile(i.guild_id,i.user.id);style=self.bot.community.profiles.style(i.guild_id,i.user.id)
             embed.add_field(name='Your current profile',value=f"Background: {style['background']}\nLayout: {style['layout']}\nProfile: {'public' if p['visible'] else 'private'}",inline=False)
@@ -221,7 +231,7 @@ class ActionMenu(OwnedView):
             command=self.actions[self.selected]
             if allowed(self.bot,command,i):embed.add_field(name=command.name.replace('_',' ').title(),value=command.description,inline=False)
         if items:
-            select=discord.ui.Select(placeholder='Choose an action',options=[discord.SelectOption(label=c.name.replace('_',' ').title()[:100],value=key,description=c.description[:100],default=self.selected==key) for key,c in items],row=0)
+            select=discord.ui.Select(placeholder='Choose an action',options=[discord.SelectOption(label=action_label(c),value=key,description=c.description[:100],default=self.selected==key) for key,c in items],row=0)
             async def choose(i):
                 self.selected=i.data['values'][0];command=self.actions.get(self.selected)
                 if not command or not allowed(self.bot,command,i):return await reply(i,'This action is unavailable to you.')
@@ -243,12 +253,14 @@ class ActionMenu(OwnedView):
                 from .profile_editor import open_editor
                 await open_editor(self.bot,i)
             editor.callback=live;self.add_item(editor)
-        embed.set_footer(text=f'Private menu · page {self.page+1}/{last+1} · /{self.kind} to reopen')
+        embed.set_footer(text=f'Private menu · page {self.page+1}/{last+1} · /{getattr(self,'entry_name',self.kind)} to reopen')
         return embed
 
 async def open_menu(bot,i,kind):
     if i.guild_id is None:return await reply(i,'Open this menu inside a server.')
-    view=SettingsMenu(bot,kind,i) if kind=='settings' else ActionMenu(bot,kind,i)
+    view=SettingsMenu(bot,'settings',i) if kind in {'settings','admin'} else ActionMenu(bot,kind,i)
+    view.entry_name=kind
+    if kind=='admin':view.tab='actions'
     if not await view.interaction_check(i):return
     await i.response.send_message(embed=view.draw(i),view=view,ephemeral=True,allowed_mentions=discord.AllowedMentions.none())
     with contextlib.suppress(discord.HTTPException):view.message=await i.original_response()
@@ -299,15 +311,18 @@ class SettingsMenu(ActionMenu):
     def draw(self,i):
         if self.tab=='actions':
             embed=super().draw(i)
-            back=discord.ui.Button(label='Feature settings',row=2)
+            back=discord.ui.Button(label='Features',row=2)
             async def features(i):self.tab='features';self.page=0;self.selected=None;self.flow=None;await i.response.edit_message(embed=self.draw(i),view=self)
-            back.callback=features;self.add_item(back);return embed
+            back.callback=features;self.add_item(back)
+            detailed=discord.ui.Button(label='Detailed settings',row=2)
+            async def settings(i):self.tab='settings';self.page=0;self.key=None;self.selected=None;self.flow=None;await i.response.edit_message(embed=self.draw(i),view=self)
+            detailed.callback=settings;self.add_item(detailed);return embed
         self.clear_items()
         from .features import FEATURES,OPTION_TYPES,enabled
         def feature_on(key):return self.bot.community.global_bans.participating(i.guild) if key=='global_bans' else enabled(self.bot.store,i.guild_id,key)
         keys=list(FEATURES) if self.tab=='features' else [key for key in OPTION_TYPES if key!='faq']
         last=max(0,(len(keys)-1)//PAGE);self.page=min(self.page,last);keys=keys[self.page*PAGE:(self.page+1)*PAGE]
-        embed=discord.Embed(title='Vivi · Server settings',description='Manage feature switches and detailed settings here. Changes share the bot’s existing configuration and appear in the dashboard.',color=0xff65ad)
+        embed=discord.Embed(title='Vivi · '+('Server administration' if getattr(self,'entry_name','')=='admin' else 'Server settings'),description='Manage feature switches and detailed settings here. Changes share the bot’s existing configuration and appear in the dashboard.',color=0xff65ad)
         if self.key:
             current=feature_on(self.key) if self.tab=='features' else self.bot.store.option(i.guild_id,self.key,'Not set')
             embed.add_field(name=self.key.replace('_',' ').title(),value=discord.utils.escape_markdown(str(current))[:500] or '(empty)',inline=False)
@@ -360,13 +375,20 @@ class SettingsMenu(ActionMenu):
         return embed
 
 def register_menus(bot):
-    bot.menu_groups={name:bot.tree.remove_command(name) for name in ['community','ticket','profile']}
+    bot.menu_groups={name:bot.tree.remove_command(name) for name in ['community','ticket','profile','admin','notify']}
     if any(not isinstance(group,app_commands.Group) for group in bot.menu_groups.values()):raise RuntimeError('Register original feature groups before installing menus.')
-    for kind in ['community','ticket','profile','settings']:
+    bot.menu_commands={name:bot.tree.remove_command(name) for name in ['role_button','ticket_panel']}
+    bot.menu_commands['economy channel_xp']=bot.tree.get_command('economy').get_command('channel_xp')
+    bot.tree.get_command('economy').remove_command('channel_xp')
+    for name in ['add','remove']:
+        bot.menu_commands['alias '+name]=bot.tree.get_command('alias').get_command(name)
+        bot.tree.get_command('alias').remove_command(name)
+    if any(not isinstance(command,app_commands.Command) for command in bot.menu_commands.values()):raise RuntimeError('Register administrative panel commands before installing menus.')
+    for kind in ['community','ticket','profile','settings','admin']:
         def make(kind):
             async def menu(i:discord.Interaction):await open_menu(bot,i,kind)
             return menu
-        command=app_commands.Command(name=kind,description={'community':'Open community activities, polls, birthdays, reports and member tools.','ticket':'Open your private ticket menu, support tools and staff controls.','profile':'Open the live profile editor, privacy, loadouts, uploads and previews.','settings':'Manage features, scam-image filtering, server settings and backups in a private menu.'}[kind],callback=make(kind))
+        command=app_commands.Command(name=kind,description={'community':'Open community activities, polls, birthdays, reports and member tools.','ticket':'Open your private ticket menu, support tools and staff controls.','profile':'Open the live profile editor, privacy, loadouts, uploads and previews.','settings':'Manage features, scam-image filtering, server settings and backups in a private menu.','admin':'Open administration: setup, feature settings, panels, backups, history and maintenance.'}[kind],callback=make(kind))
         command.guild_only=True
-        if kind=='settings':command.default_permissions=discord.Permissions(administrator=True)
+        if kind in {'settings','admin'}:command.default_permissions=discord.Permissions(administrator=True)
         bot.tree.add_command(command)

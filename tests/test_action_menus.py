@@ -33,7 +33,7 @@ class ActionMenus(unittest.IsolatedAsyncioTestCase):
         for kind in ['community','ticket','profile','settings']:
             command=self.bot.tree.get_command(kind);self.assertIsInstance(command,app_commands.Command)
             await command.callback(self.i);self.assertTrue(self.i.response.send_message.call_args.kwargs['ephemeral']);self.views.append(self.i.response.send_message.call_args.kwargs['view'])
-        self.assertEqual(set(self.bot.menu_groups),{'community','ticket','profile'})
+        self.assertEqual(set(self.bot.menu_groups),{'community','ticket','profile','admin','notify'})
         self.assertIsNotNone(self.bot.menu_groups['profile'].get_command('banner_submit'))
     async def test_all_original_actions_have_valid_native_forms(self):
         types=set()
@@ -140,3 +140,30 @@ class ActionMenus(unittest.IsolatedAsyncioTestCase):
         self.store.set_option(1,'feature:custom_aliases',True);self.store.set_option(1,'aliases',{'myticket':{'target':'ticket','argument':''}})
         command=self.bot.menu_groups['ticket'].get_command('status')
         with patch.object(command,'_callback',new=AsyncMock()) as callback:await self.bot.community.productivity.run_alias(self.i,'myticket');callback.assert_awaited_once()
+
+    async def test_admin_group_and_panel_commands_are_hidden_behind_private_menu(self):
+        command=self.bot.tree.get_command('admin');self.assertIsInstance(command,app_commands.Command)
+        self.assertIsNone(self.bot.tree.get_command('role_button'));self.assertIsNone(self.bot.tree.get_command('ticket_panel'));self.assertIsNone(self.bot.tree.get_command('notify'));self.assertIsNone(self.bot.tree.get_command('economy').get_command('channel_xp'))
+        await command.callback(self.i);kwargs=self.i.response.send_message.call_args.kwargs;self.assertTrue(kwargs['ephemeral'])
+        menu=kwargs['view'];self.views.append(menu);self.assertIsInstance(menu,SettingsMenu);self.assertEqual(menu.tab,'actions')
+        self.assertIn('role_button',menu.actions);self.assertIn('ticket_panel',menu.actions)
+        for name in ['notify add','notify list','notify remove','notify filters','economy channel_xp','alias add','alias remove']:self.assertIn(name,menu.actions)
+        for name in ['backup','restore','health','history','rollback','backup_now','branding','updates','verify']:self.assertIn('admin '+name,menu.actions)
+        self.assertNotIn('admin feature',menu.actions)
+        from vivi.action_menus import action_label
+        self.assertEqual(action_label(menu.actions['notify add']),'Notifications · Add');self.assertEqual(action_label(menu.actions['alias add']),'Aliases · Add')
+        for name in ['setup','embed','globalban','warn','warnings','timeout','untimeout','kick','ban','purge']:self.assertIsInstance(self.bot.tree.get_command(name),app_commands.Command)
+        for name in ['lockdown','unlock','slowmode','unban','tempban','history']:self.assertIsNotNone(self.bot.tree.get_command('mod').get_command(name))
+    async def test_admin_menu_denies_nonadministrator_on_open_and_after_role_change(self):
+        self.user.guild_permissions=discord.Permissions(moderate_members=True)
+        await self.bot.tree.get_command('admin').callback(self.i);self.assertIn('Administrator',self.i.response.send_message.call_args.args[0])
+        self.user.guild_permissions=discord.Permissions.all();menu=self.menu('settings');flow=self.flow(menu,'admin backup');self.user.guild_permissions=discord.Permissions(moderate_members=True)
+        await flow.begin(self.i);self.i.response.send_modal.assert_not_awaited();self.assertFalse(await menu.interaction_check(self.i))
+    async def test_hidden_role_panel_still_uses_original_checks_and_review(self):
+        menu=self.menu('settings');flow=self.flow(menu,'role_button');await flow.begin(self.i)
+        self.assertTrue(self.i.response.send_modal.called)
+        self.user.guild_permissions=discord.Permissions.none()
+        self.assertFalse(allowed(self.bot,menu.actions['role_button'],self.i))
+    async def test_favorites_for_old_admin_and_panel_commands_resolve_to_admin_menu(self):
+        from vivi.help_menu import normalize_favorites
+        self.assertEqual(normalize_favorites(self.bot,['admin backup','role_button','ticket_panel','admin health','notify add','economy channel_xp','alias add']),['admin'])

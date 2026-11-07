@@ -19,7 +19,7 @@ CATEGORIES={
 
 def normalize_favorites(bot,values):
     groups=getattr(bot,'menu_groups',{})
-    return list(dict.fromkeys(name.split()[0] if name.split() and name.split()[0] in groups else name for name in values))
+    return list(dict.fromkeys('admin' if name.split() and (name in getattr(bot,'menu_commands',{}) or name.split()[0] in getattr(bot,'menu_commands',{}) or name.split()[0]=='notify') else name.split()[0] if name.split() and name.split()[0] in groups else name for name in values))
 
 def category(command):
     root=command.qualified_name.split()[0]
@@ -91,7 +91,7 @@ class HelpMenu(discord.ui.View):
             for key,(name,_) in CATEGORIES.items():
                 count=sum(category(c)==key for c in all_commands)
                 if count:embed.add_field(name=name,value=f'{count} commands',inline=True)
-            embed.add_field(name='Getting started',value='Administrators: start with `/setup` and choose modules with `/admin feature`.\nGames: browse `/cards`, `/puzzles` and `/idle`.\nMenus show instructions; existing slash commands remain available.',inline=False)
+            embed.add_field(name='Getting started',value='Administrators: start with `/setup` and choose modules with `/admin` → Features.\nGames: browse `/cards`, `/puzzles` and `/idle`.\nMenus show instructions; existing slash commands remain available.',inline=False)
         else:
             title='Favorites' if self.section=='favorites' else CATEGORIES.get(self.section,('All commands',))[0]
             embed.description=f'**{title}**'+(f' · Search: {discord.utils.escape_markdown(self.query)}' if self.query else '')+f'\nPage {self.page+1}/{last+1} · {len(rows)} matching commands'

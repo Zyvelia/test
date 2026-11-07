@@ -1,17 +1,16 @@
-# Community, ticket, profile and settings menus
+# Community, ticket, profile and administration menus
 
-Vivi now uses four private entry points:
+Vivi uses these private menu entry points:
 
 | Command | Menu actions |
 | --- | --- |
 | `/community` | Rules panels, role menus/previews, private reports and appeals, polls, giveaways, suggestions, birthdays, spotlight consent and social tools |
 | `/ticket` | Open a ticket, view status, request closure, staff claiming/release, priority/category, labels, timeline and staff availability |
 | `/profile` | View/preview cards, appearance, visibility, stickers, showcases, loadouts, banner upload/review/deletion and staff moderation |
-| `/settings` | Administrator-only feature switches, detailed settings, server setup, verification and configuration backup/restore |
+| `/admin` | Administrator-only setup, role/ticket panels, verification, backup/restore, history, rollback, health, branding, notification subscriptions/filters, channel XP, custom alias creation/removal and update checks; Features and Detailed settings buttons |
+| `/settings` | Shortcut opening feature switches and detailed settings first; the same administrative tools remain available |
 
-The old `/community ...`, `/ticket ...` and `/profile ...` slash groups are replaced,
-reducing the registered leaf command count from 187 to 158. Their existing handlers
-remain behind the menus. Other direct command groups remain available.
+The old `/community ...`, `/ticket ...`, `/profile ...` and `/admin ...` slash groups are replaced. Role-button and ticket-panel creation, the `/notify ...` group, alias creation/removal and per-channel XP configuration are also inside `/admin`, reducing the current registered leaf command count from 160 to 138. Existing handlers remain behind the menus. Other direct command groups remain available.
 In the older feature guides, **`/profile` → Customize** means open the menu and
 choose Customize; words in parentheses describe the form fields.
 
@@ -74,3 +73,24 @@ Menu forms use the native modal controls supported by the pinned discord.py 2.7.
 Automated checks validate components, uploads, multi-step review, confirmations,
 permission revocation, settings sync and backward-compatible aliases. A configured
 running bot is needed for live Discord UI verification.
+
+## Fast administrative and moderation commands
+
+`/setup` stays available for initial server setup, and is also in the admin menu.
+`/embed` stays available for writing and posting saved messages. `/globalban` stays
+available to the configured operator account only; its menu discovery and runtime
+checks are unchanged.
+
+`/warn`, `/warnings`, `/timeout`, `/untimeout`, `/kick`, `/ban` and `/purge` remain
+direct shortcuts. The `/mod` commands, including tempban, unban, lockdown, unlock,
+slowmode and history, also remain available without opening `/admin`.
+
+Open `/admin`, choose an action and press **Open action** for maintenance or panel
+creation. Choose **Features** or **Detailed settings** for the corresponding settings.
+The original handler permissions are retained; the admin menu is private, belongs
+to its opening account/server and expires after 15 minutes. Changing permissions
+while a form is open prevents it from being submitted. Old favorites referencing
+`admin ...`, `notify ...`, `economy channel_xp`, `role_button` or `ticket_panel` resolve to `/admin`.
+
+Existing Discord installations receive the changed command registry on the next
+normal bot startup/sync. Discord may take time to refresh its command picker.

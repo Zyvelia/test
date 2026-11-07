@@ -46,8 +46,8 @@ color themes, private quick controls and text alternatives. [See the game previe
   claiming/categories/priorities/ratings, and Twitch/YouTube/GitHub notifications.
 
 **AI is off by default.** All new optional features start off; enable only the ones
-you want with `/admin feature`. Existing welcome, roles, tickets and moderation
-remain enabled. `/admin features` lists all switches; `/tools commands search:...`
+you want with `/admin` → Features. Existing welcome, roles, tickets and moderation
+remain enabled. `/admin` → Features lists all switches; `/tools commands search:...`
 searches the command menu. Settings and saved data are isolated by server.
 
 Read the [complete feature guide](docs/FEATURES.md) for each command and setting,
@@ -130,9 +130,9 @@ show duplicate or stale commands; keep one mode for normal use.
 5. As a server administrator, run:
    `/setup welcome:#welcome ticket_category:Support Tickets staff:@Support Staff logs:#staff-log`
    Choose the actual channels and role from Discord's menus.
-6. Run `/ticket_panel channel:#support` to post the support button.
+6. Open `/admin`, choose **Ticket panel**, and select `#support` to post the support button.
 7. Create an ordinary member role below the bot's role, then run
-   `/role_button channel:#choose-roles role:@Gaming label:Gaming`.
+   `/admin` → **Role button**; choose the channel, role and label.
 8. Test `/ping`, click a role button, open a ticket, and close it. Also test joining
    with another account to check the welcome message.
 
@@ -147,8 +147,8 @@ Do not use a self-service role to grant access to sensitive private channels.
 |---|---|---|
 | `/ping`, `/help` | None | Status and help |
 | `/setup` | Administrator | Save this server's channels/support role |
-| `/role_button` | Administrator | Post an opt-in role button |
-| `/ticket_panel` | Administrator | Post a private-ticket button |
+| `/admin` → Role button | Administrator | Post an opt-in role button |
+| `/admin` → Ticket panel | Administrator | Post a private-ticket button |
 | `/warn member reason` | Moderate Members | Record a warning |
 | `/warnings member` | Moderate Members | Show the latest ten warnings privately |
 | `/timeout member minutes reason` | Moderate Members | Timeout for 1 minute to 28 days |
@@ -161,7 +161,7 @@ Moderation also checks the human moderator's and bot's role hierarchy. The serve
 owner, bot itself, moderator themselves, and equal/higher roles are protected.
 Discord still enforces its own permissions, including timeout restrictions.
 Warnings are stored and logged. To send best-effort private explanations, set
-`/admin setting name:dm_explanations value:true`. Every moderation action also
+`/admin` → Detailed settings → Dm explanations. Every moderation action also
 gets a searchable staff case number.
 
 Only a ticket's creator, configured support staff, or someone with Manage Channels

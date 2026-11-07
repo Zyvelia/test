@@ -41,7 +41,7 @@ class ModuleManagerTests(unittest.IsolatedAsyncioTestCase):
         payload=json.loads(response.text);self.assertTrue(payload['enabled']);self.assertTrue(enabled(self.store,1,'games'))
         user=NS(guild_permissions=discord.Permissions.all(),id=10)
         i=NS(guild_id=1,user=user,response=NS(is_done=lambda:False,send_message=AsyncMock()))
-        await self.bot.tree.get_command('admin').get_command('feature').callback(i,'games',False)
+        await self.bot.menu_groups['admin'].get_command('feature').callback(i,'games',False)
         state=json.loads((await self.dashboard.module_state(self.request('/api/modules?guild=1'))).text)
         self.assertFalse(state['features']['games']);self.assertEqual(set(state),{'features','revision'})
     async def test_csrf_permissions_and_guild_scoping_remain_enforced(self):

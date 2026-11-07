@@ -126,7 +126,7 @@ class Productivity:
         validate_aliases({name:definition})
         if definition['target']=='faq':return await reply(i,'FAQ commands were removed. Remove or retarget this legacy shortcut.')
         target,arguments=ALIAS_TARGETS[definition['target']]
-        parts=target.split();command=getattr(self.bot,'menu_groups',{}).get(parts[0]) or self.bot.tree.get_command(parts[0])
+        parts=target.split();command=getattr(self.bot,'menu_groups',{}).get(parts[0]) or getattr(self.bot,'menu_commands',{}).get(parts[0]) or self.bot.tree.get_command(parts[0])
         for part in parts[1:]: command=command.get_command(part) if command else None
         if not command or isinstance(command,app_commands.Group): return await reply(i,'The target command is unavailable.')
         permissions=command.default_permissions or (command.parent.default_permissions if command.parent else None)

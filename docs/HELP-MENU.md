@@ -23,3 +23,5 @@ Commands still enforce those when executed. The menu never executes a command.
 Controls belong to the requesting member and server. They time out after
 15 minutes of inactivity; reopen `/help` for a new menu. In DMs, server-only
 commands and server favorites are unavailable.
+
+Administrative setup and maintenance actions are now inside `/admin`. `/help` and the website command directory list that menu instead of its old subcommands. Moderation shortcuts stay listed separately.
