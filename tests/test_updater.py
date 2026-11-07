@@ -125,3 +125,24 @@ class UpdaterTests(unittest.TestCase):
   files=updater.extract(self.archive(),self.stage);updater.apply_zip(self.root,self.stage,files,SHA)
   with patch.object(updater,'latest_commit',return_value=SHA),patch.object(updater,'download') as download:
    updater.update(self.root);download.assert_not_called()
+ def test_utf8_github_metadata_ignores_windows_default_codepage(self):
+  original_read=Path.read_text
+  def cp932_default(path,*args,**kwargs):
+   if not args and 'encoding' not in kwargs:kwargs['encoding']='cp932'
+   return original_read(path,*args,**kwargs)
+  def fetch(url,path):path.write_bytes(json.dumps(dict(sha=SHA,message='Vivi ✨ 日本語 💗'),ensure_ascii=False).encode('utf-8'))
+  with patch.object(updater,'download',side_effect=fetch),patch.object(Path,'read_text',cp932_default):self.assertEqual(updater.latest_commit(self.base),SHA)
+ def test_utf8_state_and_recovery_metadata_ignore_legacy_codepage(self):
+  original_read=Path.read_text
+  def cp932_default(path,*args,**kwargs):
+   if not args and 'encoding' not in kwargs:kwargs['encoding']='cp932'
+   return original_read(path,*args,**kwargs)
+  files=updater.extract(self.archive({'welcome-💗.txt':'Hello 日本語'}),self.stage)
+  with patch.object(Path,'read_text',cp932_default):
+   updater.apply_zip(self.root,self.stage,files,SHA)
+   state=self.root/'data/update-state.json';data=json.loads(state.read_text(encoding='utf-8'));data['note']='UTF-8 💗 日本語';state.write_text(json.dumps(data,ensure_ascii=False),encoding='utf-8')
+   updater.apply_zip(self.root,self.stage,files,'b'*40)
+   with patch.object(updater,'latest_commit',return_value='b'*40):updater.update(self.root,check=True)
+ def test_git_output_has_explicit_utf8_decoding(self):
+  with patch.object(updater.subprocess,'check_output',return_value='日本語\n') as run:
+   self.assertEqual(updater.git(self.root,'status','--porcelain'),'日本語');self.assertEqual(run.call_args.kwargs['encoding'],'utf-8');self.assertEqual(run.call_args.kwargs['errors'],'replace')

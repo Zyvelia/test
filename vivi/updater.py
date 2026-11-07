@@ -33,7 +33,7 @@ def download(url,target):
 
 def latest_commit(work):
     path=work/'commit.json';download(f'https://api.github.com/repos/{REPOSITORY}/commits/{BRANCH}',path)
-    data=json.loads(path.read_text());sha=data.get('sha','')
+    data=json.loads(path.read_text(encoding='utf-8-sig'));sha=data.get('sha','')
     if not re.fullmatch('[0-9a-f]{40}',sha):raise ValueError('GitHub returned an invalid commit ID.')
     return sha
 
@@ -80,7 +80,7 @@ def extract(archive,folder):
 def write_json(path,data):
     temporary=path.with_suffix('.tmp');temporary.write_text(json.dumps(data,indent=2),encoding='utf-8');os.replace(temporary,path)
 
-def git(root,*args):return subprocess.check_output(['git','-c','core.hooksPath='+str(root/'data'/'no-hooks'),*args],cwd=root,text=True,stderr=subprocess.STDOUT).strip()
+def git(root,*args):return subprocess.check_output(['git','-c','core.hooksPath='+str(root/'data'/'no-hooks'),*args],cwd=root,text=True,encoding='utf-8',errors='replace',stderr=subprocess.STDOUT).strip()
 
 def check_git(root):
     if not (root/'.git').exists():return False
@@ -98,7 +98,7 @@ def install_dependencies(root,staged):
 def recover(root):
     journal=root/'data'/'update-pending.json'
     if not journal.exists():return
-    data=json.loads(journal.read_text());backup=safe_backup(root,data['backup'])
+    data=json.loads(journal.read_text(encoding='utf-8-sig'));backup=safe_backup(root,data['backup'])
     for name,existed in data['files'].items():
         if protected(name):raise ValueError('Invalid recovery path.')
         target=safe_path(root,name)
@@ -116,7 +116,7 @@ def safe_backup(root,name):
     return path
 
 def apply_zip(root,staged,files,sha):
-    state_path=root/'data'/'update-state.json';previous=json.loads(state_path.read_text()) if state_path.exists() else {}
+    state_path=root/'data'/'update-state.json';previous=json.loads(state_path.read_text(encoding='utf-8-sig')) if state_path.exists() else {}
     old=previous.get('files',{});changed=[];removed=[]
     for name,digest in files.items():
         target=safe_path(root,name)
@@ -150,7 +150,7 @@ def apply_zip(root,staged,files,sha):
 
 def rollback(root,backup_id):
     root=Path(root).resolve();recover(root);backup=safe_backup(root,backup_id)
-    info=json.loads((backup/'backup-info.json').read_text())
+    info=json.loads((backup/'backup-info.json').read_text(encoding='utf-8-sig'))
     # Only explicit archive-update backups can be rolled back here.
     if not isinstance(info.get('files'),dict):raise ValueError('Invalid backup metadata.')
     for name,existed in info['files'].items():
@@ -165,11 +165,11 @@ def update(root=ROOT,check=False):
     root=Path(root).resolve();(root/'data').mkdir(exist_ok=True);recover(root);is_git=check_git(root)
     with tempfile.TemporaryDirectory(prefix='vivi-update-') as temporary:
         work=Path(temporary);sha=latest_commit(work)
-        current=git(root,'rev-parse','HEAD') if is_git else json.loads((root/'data'/'update-state.json').read_text()).get('commit') if (root/'data'/'update-state.json').exists() else None
+        current=git(root,'rev-parse','HEAD') if is_git else json.loads((root/'data'/'update-state.json').read_text(encoding='utf-8-sig')).get('commit') if (root/'data'/'update-state.json').exists() else None
         if check:
             print(('Up to date' if current==sha else 'Update available' if current else 'Installed revision unknown; run the updater to compare files')+f' · GitHub {sha[:12]}');return
         if current==sha:
-            state={} if is_git else json.loads((root/'data'/'update-state.json').read_text())
+            state={} if is_git else json.loads((root/'data'/'update-state.json').read_text(encoding='utf-8-sig'))
             unchanged=is_git or bool(state.get('files')) and all(safe_path(root,name).is_file() and hashlib.sha256(safe_path(root,name).read_bytes()).hexdigest()==digest for name,digest in state['files'].items() if not protected(name))
             if unchanged:print('Vivi is already up to date.');return
         archive=work/'update.zip';download(f'https://codeload.github.com/{REPOSITORY}/zip/{sha}',archive)

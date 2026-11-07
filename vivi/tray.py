@@ -67,7 +67,7 @@ class TrayController:
                 if self.running():raise ValueError('Another Vivi process is running. Stop it before updating.')
                 result=subprocess.run([str(self.root/'.venv'/'Scripts'/'python.exe'),'-u','-m','vivi.updater'],cwd=self.root,
                     stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,
-                    creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+                    creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),env={**os.environ,'PYTHONUTF8':'1','PYTHONIOENCODING':'utf-8'})
                 if result.returncode:raise ValueError('Update failed. Vivi remains stopped; open update.log for the result.')
                 if restart:
                     if not self._start(after_update=True):raise ValueError('Updated, but another Vivi instance started. Check its status before restarting.')

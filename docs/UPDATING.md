@@ -92,6 +92,25 @@ This restores files replaced by that update and removes files it added. It can r
 
 Keep a separate encrypted full-data backup before significant updates. An updater’s source backup is not a database migration backup. Old source backups are retained until you remove them; remove them only when no pending recovery references them.
 
+## Windows encoding error (CP932 or another legacy code page)
+
+A message such as `'cp932' codec can't decode byte ...` means an older updater
+read GitHub’s UTF-8 JSON using Windows’ local encoding. It is not a missing
+Discord or GitHub token. The public updater does not require either token.
+
+Stop Vivi, open PowerShell in its folder, and run this once to update the older
+updater with UTF-8 mode enabled:
+
+```powershell
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+.\update.bat
+```
+
+Current updater versions explicitly read metadata as UTF-8, decode Git output
+with UTF-8 and enable UTF-8 for launcher/tray update processes. No system-wide
+Windows locale change is needed. Restart the tray after updating to load its fix.
+
 ## Troubleshooting
 
 - **Vivi or another updater is running:** stop the launcher, tray bot or startup service first. The launcher and updater share a cross-platform host lock.

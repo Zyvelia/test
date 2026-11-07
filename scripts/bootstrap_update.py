@@ -19,7 +19,7 @@ def main():
     sha=json.loads(read(f'https://api.github.com/repos/{REPO}/commits/main'))['sha']
     if not re.fullmatch('[0-9a-f]{40}',sha):raise ValueError('Invalid GitHub revision.')
     with tempfile.TemporaryDirectory(prefix='vivi-bootstrap-') as temporary:
-        folder=Path(temporary)/'vivi_bootstrap';folder.mkdir();(folder/'__init__.py').write_text('')
+        folder=Path(temporary)/'vivi_bootstrap';folder.mkdir();(folder/'__init__.py').write_text('',encoding='utf-8')
         for name in ('host_lock.py','updater.py'):(folder/name).write_bytes(read(f'https://raw.githubusercontent.com/{REPO}/{sha}/vivi/{name}'))
         sys.path.insert(0,temporary)
         from vivi_bootstrap.host_lock import host_lock
