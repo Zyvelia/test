@@ -71,3 +71,39 @@ class ModuleManagerTests(unittest.IsolatedAsyncioTestCase):
             response=await self.dashboard.login(self.request('/login?next='+next_value))
             self.assertEqual(list(self.dashboard.states.values())[-1]['next'],expected)
             self.assertTrue(response.location.startswith('https://discord.com/'))
+
+    async def test_related_features_are_nested_once_and_details_link_is_removed(self):
+        from vivi.module_manager import FAMILIES
+        keys=[key for _,children,_ in FAMILIES.values() for key in children]
+        self.assertEqual(set(keys),set(FEATURES)-{'faq'});self.assertEqual(len(keys),len(set(keys)))
+        response=await self.dashboard.modules(self.request('/modules?guild=1'))
+        self.assertIn('data-module-family="welcome"',response.text);self.assertIn('data-module-family="moderation"',response.text)
+        self.assertNotIn('Detailed settings →',response.text)
+        from html.parser import HTMLParser
+        class Families(HTMLParser):
+            def __init__(self):super().__init__();self.family=None;self.members={}
+            def handle_starttag(self,tag,attrs):
+                a=dict(attrs)
+                if 'data-module-family' in a:self.family=a['data-module-family'];self.members[self.family]=[]
+                if 'data-feature-module' in a:self.members[self.family].append(a['data-feature-module'])
+        parser=Families();parser.feed(response.text)
+        self.assertEqual(set(parser.members['welcome']),set(FAMILIES['welcome'][1]));self.assertEqual(set(parser.members['tickets']),{'tickets','ticket_tools'})
+    async def test_related_settings_pages_share_the_same_family_navigation(self):
+        response=await self.dashboard.configure_module(self.request('/configure?guild=1&module=welcome'))
+        self.assertIn('aria-label="Related settings"',response.text)
+        for key in ['welcome_cards','goodbye','autorole','rules','roles']:self.assertIn('module='+key,response.text)
+
+    async def test_temporary_discord_errors_keep_signed_in_profile(self):
+        for code,error in [(429,web.HTTPTooManyRequests),(503,web.HTTPServiceUnavailable)]:
+            async def handler(request,error=error):raise error(text='Discord is busy. Your login is still active.')
+            request=make_mocked_request('GET','/modules?guild=1',headers={'Host':f'{self.dashboard.host}:{self.dashboard.port}','Cookie':'vivi_session=sid'})
+            response=await self.dashboard.security(request,handler)
+            self.assertEqual(response.status,code);self.assertIn('account-menu',response.text);self.assertNotIn('href="/login"',response.text);self.assertIn('sid',self.dashboard.sessions)
+    async def test_real_expiry_clears_profile_and_offers_reconnect(self):
+        async def handler(request):raise web.HTTPUnauthorized(text='Discord authorization ended.')
+        request=make_mocked_request('GET','/modules?guild=1',headers={'Host':f'{self.dashboard.host}:{self.dashboard.port}','Cookie':'vivi_session=sid'})
+        response=await self.dashboard.security(request,handler)
+        self.assertEqual(response.status,401);self.assertNotIn('account-menu',response.text);self.assertNotIn('sid',self.dashboard.sessions);self.assertIn('Sign in with Discord',response.text)
+    async def test_changes_always_request_fresh_discord_permissions(self):
+        await self.dashboard.feature(self.post(feature='games',enabled='false'))
+        self.assertTrue(self.dashboard.api_guilds.call_args.kwargs['fresh'])

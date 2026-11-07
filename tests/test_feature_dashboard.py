@@ -89,3 +89,9 @@ class FeatureDashboardTests(unittest.IsolatedAsyncioTestCase):
         self.store.set_option(1,'welcome_channel',3);self.assertEqual(self.store.settings(1)['welcome'],3)
         with self.assertRaises(web.HTTPSeeOther):await self.dashboard.save_messages(self.post())
         self.assertEqual(self.store.settings(1)['welcome'],3)
+
+    async def test_specialized_editors_are_inside_their_module_and_return_there(self):
+        for feature,action in [('welcome_cards','/studio/welcome'),('xp','/xp-channel'),('notifications','/subscription'),('custom_aliases','/aliases'),('tickets','/ticket-category')]:
+            response=await self.dashboard.configure_module(self.request(feature));self.assertIn('action="'+action+'"',response.text);self.assertIn('name="return_module" value="'+feature+'"',response.text)
+        response=await self.dashboard.configure_module(self.request('welcome_cards'))
+        self.assertNotIn('action="/studio/announcement"',response.text);self.assertIn('data-editor="welcome"',response.text)

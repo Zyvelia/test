@@ -1,12 +1,13 @@
 """Module-specific dashboard controls, using the same validated server options."""
 import html
 import json
+import re
 from types import SimpleNamespace
 import discord
 from aiohttp import web
 from .features import FEATURES,OPTION_TYPES,enabled
 from .settings import DEFAULTS,validate_resources
-from .module_manager import title,DESCRIPTIONS,GROUPS,group_for
+from .module_manager import title,DESCRIPTIONS,GROUPS,group_for,FAMILIES,family_for,family_navigation
 from . import embed_writer
 from .message_templates import expand,message_embed
 
@@ -24,19 +25,33 @@ TOOLS={
  'instant_webhooks':[('Notification filters and subscriptions','/dashboard?guild={gid}&module=instant_webhooks#module-settings')],
  'custom_aliases':[('Custom command aliases','/dashboard?guild={gid}&module=custom_aliases#module-settings')],
  'xp':[('Per-channel XP settings','/dashboard?guild={gid}&module=xp#module-settings')],
- 'profiles':[('Dashboard branding and themes','/dashboard?guild={gid}#dashboard-panels')],
  'scam_images':[('Reference image manager','/dashboard?guild={gid}&module=scam_images#module-settings')],
  'global_bans':[('Owner participation and consent','/modules?guild={gid}#module-global_bans')]}
 
 class FeatureDashboard:
     def feature_routes(self):return [web.get('/configure',self.configure_module),web.post('/messages',self.save_messages)]
     def feature_page(self,gid,feature,content):
-        response=self.page(content);navigation=''
-        for group,features in GROUPS.items():
-            links=''.join(f'<a href="/configure?guild={gid}&module={key}"'+(' aria-current="page"' if key==feature else '')+f'>{E(title(key))}</a>' for key in sorted(features) if key in FEATURES)
-            navigation+='<details'+(' open' if group_for(feature)==group else '')+f'><summary>{E(group)}</summary>{links}</details>'
-        response.text=response.text.replace('<nav data-dashboard-sections aria-label="Server modules"></nav>','<nav data-dashboard-sections aria-label="Server modules">'+navigation+'</nav>')
+        response=self.page(content)
+        response.text=response.text.replace('<nav data-dashboard-sections aria-label="Server modules"></nav>','<nav data-dashboard-sections aria-label="Server modules">'+family_navigation(gid,family_for(feature))+'</nav>')
         return response
+    def related_editors(self,gid,session,feature):
+        def panel(markup,heading):
+            marker='<details><summary>'+heading+'</summary>'
+            if marker not in markup:return ''
+            return '<details open><summary>'+heading+'</summary>'+markup.split(marker,1)[1].split('</details>',1)[0]+'</details>'
+        result=''
+        if feature=='welcome_cards':
+            markup=self.studio_forms(gid,session)
+            result=markup.split('<h2>Welcome-card layout editor</h2>',1)[1].split('<h2>Announcement builder</h2>',1)[0]
+        if feature=='xp':result+=panel(self.advanced_forms(gid,session),'Per-channel XP')
+        if feature in {'tickets','ticket_tools'}:
+            markup=self.settings_forms(gid,session)
+            result+=panel(markup,'Server channels and support staff')+panel(markup,'Ticket categories and open tickets')
+        if feature in {'notifications','instant_webhooks'}:
+            result+=panel(self.settings_forms(gid,session),'Twitch, YouTube and GitHub notifications')+panel(self.advanced_forms(gid,session),'Notification filters')
+        if feature=='custom_aliases':result+=panel(self.tools_forms(gid,session),'Custom command aliases')
+        if feature=='scheduled_backups':result+=panel(self.tools_forms(gid,session),'Scheduled backups')
+        return re.sub(r'<form\b[^>]*>',lambda m:m[0]+f'<input type="hidden" name="return_module" value="{feature}">',result)
     async def configure_module(self,request):
         try:gid=int(request.query.get('guild',''))
         except ValueError:raise web.HTTPBadRequest(text='Choose a server.')
@@ -44,12 +59,14 @@ class FeatureDashboard:
         if feature not in FEATURES or feature=='faq':raise web.HTTPNotFound(text='Unknown module.')
         session=await self.authorize(request,gid);guild=self.service.bot.get_guild(gid);store=self.service.store
         content=f'<a href="/modules?guild={gid}">← All modules</a><div class="modules-intro"><div><span class="eyebrow">Customize your server</span><h2>{E(title(feature))}</h2><p>{E(DESCRIPTIONS.get(feature,""))}</p></div><a class="btn btn-ghost" href="/embeds?guild={gid}">Embed writer →</a></div>'
+        family=FAMILIES[family_for(feature)]
+        content+='<nav class="related-modules" aria-label="Related settings"><strong>'+E(family[0])+'</strong>'+''.join(f'<a href="/configure?guild={gid}&module={key}"'+(' aria-current="page"' if key==feature else '')+f'>{E(title(key))}</a>' for key in family[1])+'</nav>'
         content+=f'<div data-dashboard-sync data-guild="{gid}" data-revision="{self.config_revision(gid)}"><p class="sync-status" role="status">Settings shared with Discord. Checking for updates automatically.</p></div>'
         if request.query.get('saved')=='yes':content+='<p role="status">Settings saved. New events use these settings immediately.</p>'
         if feature in {'welcome','goodbye'}:return self.feature_page(gid,feature,content+self.message_composer(gid,session,feature))
         on=enabled(store,gid,feature)
         if feature!='global_bans':content+='<form action="/feature" method="post">'+self.hidden(session,gid)+f'<input type="hidden" name="feature" value="{feature}"><input type="hidden" name="enabled" value="{str(not on).lower()}"><input type="hidden" name="return" value="configure"><p>Feature is <strong>{"enabled" if on else "disabled"}</strong>.</p><button>{"Disable" if on else "Enable"} {E(title(feature))}</button></form>'
-        keys=[key for key in OPTION_TYPES if any(key.startswith(prefix) for prefix in PREFIXES.get(feature,())) and OPTION_TYPES[key] is not dict]
+        keys=[] if feature=='welcome_cards' else [key for key in OPTION_TYPES if any(key.startswith(prefix) for prefix in PREFIXES.get(feature,())) and OPTION_TYPES[key] is not dict]
         content+='<div class="feature-settings-grid">'
         for key in keys:
             typ=OPTION_TYPES[key];value=store.option(gid,key,DEFAULTS.get(key,[] if typ is list else False if typ is bool else 0 if typ is int else ''))
@@ -68,7 +85,8 @@ class FeatureDashboard:
             control=control.replace('name="value"',f'id="setting-{key}" name="value"',1).replace('name="values"',f'id="setting-{key}" name="values"',1)
             content+=control+('<small>Comma-separated entries.</small>' if typ is list and key!='ai_channels' else '')+'<button>Save setting</button></form>'
         content+='</div>'
-        for label,url in TOOLS.get(feature,[]):content+=f'<p><a class="btn btn-ghost" href="{E(url.format(gid=gid))}">{E(label)} →</a></p>'
+        editors=self.related_editors(gid,session,feature);content+=editors
+        for label,url in ([] if editors else TOOLS.get(feature,[])):content+=f'<p><a class="btn btn-ghost" href="{E(url.format(gid=gid))}">{E(label)} →</a></p>'
         if not keys and feature not in TOOLS:content+='<p>This module has no additional server-wide settings. Its individual items and member preferences are managed through its Discord menu.</p>'
         content+=f'<p><a href="/commands?search={E(feature)}">Related Discord commands</a> · <a href="/dashboard?guild={gid}">All server settings</a></p>'
         return self.feature_page(gid,feature,content)

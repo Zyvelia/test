@@ -1,4 +1,5 @@
 """Website and permission-checked dashboard. OAuth tokens remain in memory only."""
+from contextvars import ContextVar
 import hashlib
 import io
 import json
@@ -16,6 +17,7 @@ from .features import FEATURES, OPTION_TYPES, enabled, validate_backup
 from .settings import DEFAULTS, parse_value, validate_resources, validate_setup
 
 DISCORD='https://discord.com/api/v10'
+RETURN_MODULE=ContextVar('dashboard_return_module',default=None)
 
 from .advanced_dashboard import AdvancedDashboard
 from .customization import UI_BRAND,THEMES,validate_brand
@@ -29,8 +31,9 @@ from .webconfig import dashboard_endpoint
 from .module_manager import ModuleManager
 from .embed_dashboard import EmbedDashboard
 from .feature_dashboard import FeatureDashboard
+from .dashboard_auth import DashboardAuth
 
-class Dashboard(FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDashboard,DashboardTools):
+class Dashboard(DashboardAuth,FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDashboard,DashboardTools):
     def __init__(self,service):
         self.service=service; self.sessions={}; self.states={}; self.runner=None
         self.client=os.getenv('DISCORD_CLIENT_ID','').strip()
@@ -69,12 +72,24 @@ class Dashboard(FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDash
         locale_token=UI_LANGUAGE.set('en')
         brand_token=UI_BRAND.set({})
         actor_token=self.service.store.actor.set('dashboard')
+        return_token=RETURN_MODULE.set(None)
         try:
             try: response=await handler(request)
-            except web.HTTPException as response:
-                self.headers(response);raise
+            except web.HTTPException as error:
+                if error.status==401:
+                    self.sessions.pop(request.cookies.get('vivi_session',''),None);WEB_SESSION.set(None);error.del_cookie('vivi_session',path='/')
+                if error.status in {401,429,503} and request.method=='GET' and not request.path.startswith('/api/'):
+                    heading='Reconnect your Discord account' if error.status==401 else 'Discord needs a moment'
+                    action='<a class="btn btn-primary" href="/login?next=modules">Sign in with Discord</a>' if error.status==401 else '<a class="btn btn-primary" href="'+esc(request.rel_url)+'">Try again</a>'
+                    response=self.site_shell('<div class="container"><section class="error-card"><h1>'+heading+'</h1><p>'+esc(error.text)+'</p>'+action+'<a class="text-link" href="/dashboard">Your servers</a></section></div>',heading)
+                    response.set_status(error.status)
+                    if 'Retry-After' in error.headers:response.headers['Retry-After']=error.headers['Retry-After']
+                    if error.status==401:response.del_cookie('vivi_session',path='/')
+                    self.headers(response);return response
+                self.headers(error);raise
             self.headers(response);return response
         finally:
+            RETURN_MODULE.reset(return_token)
             WEB_SESSION.reset(session_token)
             UI_LANGUAGE.reset(locale_token)
             UI_BRAND.reset(brand_token)
@@ -93,17 +108,10 @@ class Dashboard(FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDash
             self.sessions.pop(sid,None); raise web.HTTPUnauthorized(text='Session expired. Return to /login.')
         return session
 
-    async def api_guilds(self,session):
-        async with self.service.session.get(DISCORD+'/users/@me/guilds',
-                headers={'Authorization':'Bearer '+session['token']}) as response:
-            if response.status!=200: raise web.HTTPUnauthorized(text='Discord login expired. Sign in again.')
-            rows=await response.json()
-        return {str(g['id']):g for g in rows if g.get('owner') or (int(g.get('permissions',0)) & 8)}
-
-    async def authorize(self,request,guild):
+    async def authorize(self,request,guild,fresh=False):
         session=self.session(request)
-        # Fresh Discord permissions on every page/action; cached login does not preserve revoked access.
-        guilds=await self.api_guilds(session)
+        # Browse with a short cache; every write rechecks Discord before changing data.
+        guilds=await self.api_guilds(session,fresh=fresh or getattr(request,'method','GET') not in {'GET','HEAD'})
         if str(guild) not in guilds or self.service.bot.get_guild(guild) is None:
             raise web.HTTPForbidden(text='You must be a current server owner/administrator and this bot must be installed.')
         UI_LANGUAGE.set(self.service.store.option(guild,'language','en'))
@@ -157,7 +165,7 @@ class Dashboard(FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDash
                          f'<input type="hidden" name="guild" value="{guild}"><input type="hidden" name="feature" value="{feature}">'
                          f'<input type="hidden" name="enabled" value="{str(not on).lower()}"><b>{feature.replace("_"," ")}</b>: {"ON" if on else "OFF"} '
                          f'<button role="switch" aria-checked="{str(on).lower()}" aria-label="Toggle {feature.replace("_"," ")}">{"Disable" if on else "Enable"}</button><a class="module-configure" href="#module-settings" data-module-configure="{feature}">Customize →</a></form>')
-        return self.page(self.personalize(f'<h2>{name}</h2><p><a href="/dashboard">All servers</a> · <a class="btn btn-primary" href="/modules?guild={guild}">Manage features →</a></p><p>Manage Vivi for this server. Optional AI, voice and notification providers need local host configuration.</p><div data-dashboard-sync data-guild="{guild}" data-revision="{self.config_revision(guild)}"><p class="sync-status" role="status">Settings shared with Discord · checking for updates automatically.</p></div><details open><summary>Feature switches</summary><div class="module-grid">'+''.join(forms)+'</div></details>'+self.settings_forms(guild,session)+self.logout_form(session),guild,session))
+        return self.page(self.personalize(f'<h2>{name} · Server tools</h2><p><a href="/dashboard">All servers</a> · <a class="btn btn-primary" href="/modules?guild={guild}">Manage features →</a></p><p>Server setup, integrations, backups and appearance tools. For everyday feature settings, use the grouped sections in Manage features.</p><div data-dashboard-sync data-guild="{guild}" data-revision="{self.config_revision(guild)}"><p class="sync-status" role="status">Settings shared with Discord · checking for updates automatically.</p></div><details><summary>All feature switches (advanced)</summary><div class="module-grid">'+''.join(forms)+'</div></details>'+self.settings_forms(guild,session)+self.logout_form(session),guild,session))
 
     @staticmethod
     def logout_form(session):
@@ -206,7 +214,7 @@ class Dashboard(FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDash
         if not hmac.compare_digest(session['csrf'],str(data.get('csrf',''))): raise web.HTTPForbidden(text='Invalid form token.')
         try: guild=int(data.get('guild',''))
         except ValueError: raise web.HTTPBadRequest(text='Invalid server.')
-        await self.authorize(request,guild)
+        await self.authorize(request,guild,fresh=True)
         feature=data.get('feature'); value=data.get('enabled')
         if feature not in FEATURES or value not in {'true','false'}: raise web.HTTPBadRequest(text='Invalid feature setting.')
         if feature=='global_bans':
@@ -296,12 +304,16 @@ class Dashboard(FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDash
         if not hmac.compare_digest(session['csrf'],str(data.get('csrf',''))): raise web.HTTPForbidden(text='Invalid form token.')
         try: gid=int(data.get('guild',''))
         except ValueError: raise web.HTTPBadRequest(text='Invalid server.')
-        await self.authorize(request,gid)
+        await self.authorize(request,gid,fresh=True)
         UI_LANGUAGE.set(self.service.store.option(gid,'language','en'))
         self.service.store.actor.set('dashboard:'+str(session.get('user_id','admin')))
+        RETURN_MODULE.set(data.get('return_module') if data.get('return_module') in FEATURES else None)
         return data,session,gid,self.service.bot.get_guild(gid)
 
-    def done(self,guild): raise web.HTTPSeeOther('/dashboard?guild='+str(guild))
+    def done(self,guild):
+        module=RETURN_MODULE.get()
+        if module:raise web.HTTPSeeOther(f'/configure?guild={guild}&module={module}&saved=yes')
+        raise web.HTTPSeeOther('/dashboard?guild='+str(guild))
 
     async def setting(self,request):
         data,session,gid,guild=await self.form(request)

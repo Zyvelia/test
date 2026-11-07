@@ -124,3 +124,11 @@ For **Welcome** or **Goodbye**, choose a destination channel, enable the message
 Selecting an embed copies its content into the event settings. This copy is included in configuration backups and remains usable if the library template is deleted. After editing a library template, select it again in the welcome/goodbye composer and save to apply the new version. Previously posted messages remain unchanged. Placeholder expansion is bounded to Discord embed limits.
 
 Changes made through Discord appear on reloading the page. Open customization pages also check for changes automatically and reload only when no unsaved edits exist; otherwise they offer to reload. The welcome channel is shared with existing server setup commands and does not require a bot restart.
+
+## Grouped dashboard sections
+
+The module manager groups related controls into 11 expandable sections: Welcome & joining; Moderation & safety; Tickets & support; Levels & profiles; Games & events; Community activities; Teams & gaming groups; Music & voice; Notifications; AI & translation; Server tools. Each feature still has its own switch, so grouping never enables or disables features implicitly.
+
+Search and category/status filters reveal matching nested controls. Configuration pages share related-setting tabs and the same grouped navigation. Welcome-card, XP, ticket, subscription, alias and scheduled-backup editors appear inside the relevant module. Their save actions return to that module. General setup/history/appearance tools remain under **Server tools**; the old prominent Detailed settings link is removed, and advanced bulk switches start collapsed.
+
+A busy Discord API does not log you out. The website preserves your profile during HTTP 429, transient service failures and connection problems. Only a genuine expired local session or Discord HTTP 401 asks you to reconnect. Permission denials use a permission message rather than telling a still-signed-in member that the login expired. All cache/session data remains in memory and disappears on bot restart.

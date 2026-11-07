@@ -55,6 +55,23 @@ DESCRIPTIONS={
  'scheduled_backups':'Create scheduled configuration backups using your retention settings.',
  'custom_aliases':'Register configured informational slash-command shortcuts.',
  'invite_tracking':'Estimate which invite brought a member into the server.'}
+FAMILIES={
+ 'welcome':('Welcome & joining',['welcome','welcome_cards','goodbye','autorole','rules','roles','invite_tracking'],'Messages, welcome cards, newcomer roles and rules in one place.'),
+ 'moderation':('Moderation & safety',['moderation','automod','raid_protection','mention_protection','warning_thresholds','scam_images','reports','appeals','staff_reviews','global_bans'],'Moderation, automatic protection and staff review tools.'),
+ 'tickets':('Tickets & support',['tickets','ticket_tools'],'Ticket channels, staff tools, priorities and feedback.'),
+ 'profiles':('Levels & profiles',['xp','economy','profiles'],'XP, fictional currency and member appearance.'),
+ 'games':('Games & events',['games','competitions','polls','giveaways'],'Games, tournaments, polls and giveaways.'),
+ 'community':('Community activities',['suggestions','birthdays','spotlight','daily_questions','afk','timezone_directory','reminders'],'Member activities, celebrations and personal utilities.'),
+ 'teams':('Teams & gaming groups',['teams','lfg','library'],'Rosters, recruitment, looking-for-group boards and guides.'),
+ 'voice':('Music & voice',['music','voice_rooms'],'Music queues and temporary voice rooms.'),
+ 'notifications':('Notifications',['notifications','instant_webhooks'],'Subscriptions, filters and webhook delivery.'),
+ 'assistance':('AI & translation',['ai','translation'],'Optional assistance, approved channels and usage limits.'),
+ 'server':('Server tools',['scheduled_backups','custom_aliases'],'Backups and custom command shortcuts.')}
+
+def family_for(key):return next((ident for ident,(_,keys,_) in FAMILIES.items() if key in keys),'server')
+def family_navigation(gid,current=None):
+    return ''.join('<details'+(' open' if current==ident else '')+f'><summary>{esc(label)}</summary>'+''.join(f'<a href="/configure?guild={gid}&module={key}">{esc(title(key))}</a>' for key in keys)+'</details>' for ident,(label,keys,_) in FAMILIES.items())
+
 COMMAND_TERMS={'global_bans':'globalban','competitions':'competition','profiles':'profile','roles':'role','polls':'poll','giveaways':'giveaway','suggestions':'suggest','birthdays':'birthday','timezone_directory':'timezone','reminders':'remind','invite_tracking':'invite','translation':'translate'}
 HINTS={
  'global_bans':'Only the server owner can enable this. Existing entries may be banned; Ban Members is required. Disabling does not undo existing bans.',
@@ -103,11 +120,11 @@ class ModuleManager:
         query=request.query.get('search','')[:100];group=request.query.get('category','all');state=request.query.get('state','all')
         if group not in GROUPS:group='all'
         if state not in {'enabled','disabled'}:state='all'
-        cards=[];count=0;total=0
+        cards=[];card_keys=[];count=0;total=0
         for key in sorted(FEATURES,key=lambda key:(list(GROUPS).index(group_for(key)),title(key))):
             if key=='faq':continue  # Retained legacy data has no active FAQ command module.
             total+=1;on=module_enabled(self,gid,key);category=group_for(key);description=DESCRIPTIONS.get(key,'Enable '+title(key)+' for this server.')
-            matches=(group=='all' or category==group) and (state=='all' or on==(state=='enabled')) and all(term in (title(key)+' '+description+' '+key+' '+category).lower() for term in query.lower().split())
+            matches=(group=='all' or category==group) and (state=='all' or on==(state=='enabled')) and all(term in (title(key)+' '+description+' '+key+' '+category+' '+FAMILIES[family_for(key)][0]).lower() for term in query.lower().split())
             if matches:count+=1
             symbol='shield' if category=='Protection' else 'game' if category=='Games & profiles' else 'ticket' if category=='Support' else 'bell' if category=='Voice & alerts' else 'users' if category=='Community' else 'settings'
             configure=f'<a class="text-link" href="/configure?guild={gid}&module={key}">Configure →</a>'
@@ -115,8 +132,17 @@ class ModuleManager:
             if key=='global_bans':
                 from .global_bans import operator_id
                 consent=f'<label class="global-consent" data-global-consent'+(' hidden' if on else '')+f'><input type="checkbox" name="global_consent" value="true"'+(' required' if not on else '')+(' disabled' if owner_disabled else '')+f'> I am the server owner and accept enforcement of existing and future entries controlled by user {operator_id()}.</label>'
+            card_keys.append(key)
             cards.append(f'<article class="feature-module" id="module-{key}" data-feature-module="{key}" data-group="{esc(category)}" data-enabled="{str(on).lower()}" data-owner-can-enable="{str(session.get('user_id')==getattr(guild,'owner_id',None)).lower()}"'+(' hidden' if not matches else '')+f'><div class="module-heading"><span class="module-symbol">{icon(symbol)}</span><span class="module-state" data-module-state>{"Enabled" if on else "Disabled"}</span></div><span class="tag">{esc(category)}</span><h3>{esc(title(key))}</h3><p class="module-description">{esc(description)}</p><p class="module-hint">{esc(HINTS.get(key,""))}</p><div class="module-bottom">{configure}<form action="/feature" method="post" data-module-toggle>'+self.hidden(session,gid)+f'<input type="hidden" name="feature" value="{key}"><input type="hidden" name="enabled" value="{str(not on).lower()}"><input type="hidden" name="return" value="modules">{consent}<button type="submit"'+(' disabled title="Only the server owner can opt in"' if owner_disabled else '')+f' role="switch" aria-checked="{str(on).lower()}" aria-label="Toggle {esc(title(key))}">{"Disable" if on else "Enable"}</button></form></div><span class="module-save" role="status" aria-live="polite"></span></article>')
+        sections=[]
+        for ident,(label,keys,description) in FAMILIES.items():
+            children=''.join(card for key,card in zip(card_keys,cards) if key in keys)
+            visible=any((group=='all' or group_for(key)==group) and (state=='all' or module_enabled(self,gid,key)==(state=='enabled')) and all(term in (title(key)+' '+DESCRIPTIONS.get(key,'')+' '+key+' '+group_for(key)+' '+label).lower() for term in query.lower().split()) for key in keys)
+            active=sum(module_enabled(self,gid,key) for key in keys)
+            sections.append(f'<details class="module-family" data-module-family="{ident}"'+(' hidden' if not visible else '')+(' open' if visible and (query or group!='all' or state!='all') else '')+f'><summary><span><strong>{esc(label)}</strong><small>{esc(description)}</small></span><span class="family-count">{active} of {len(keys)} enabled</span></summary><div class="family-children">'+children+'</div></details>')
         options='<option value="all">All categories</option>'+''.join(f'<option value="{esc(name)}"'+(' selected' if name==group else '')+f'>{esc(name)}</option>' for name in GROUPS)
         states=''.join(f'<option value="{value}"'+(' selected' if value==state else '')+f'>{label}</option>' for value,label in [('all','All modules'),('enabled','Enabled'),('disabled','Disabled')])
-        content=f'<div data-module-manager data-guild="{gid}"><div class="modules-intro"><div><span class="eyebrow">Your server modules</span><h2>{esc(guild.name)}</h2><p>Choose what Vivi does here. Changes save directly to the bot’s server configuration.</p></div><a class="btn btn-ghost" href="/dashboard?guild={gid}">Detailed settings →</a></div><form action="/modules" method="get" class="module-filters" id="module-filters"><input type="hidden" name="guild" value="{gid}"><label>Find a module<input type="search" name="search" maxlength="100" value="{esc(query)}" placeholder="Welcome, moderation, games…"></label><label>Category<select name="category">{options}</select></label><label>Status<select name="state">{states}</select></label><button class="btn" type="submit">Filter</button></form><p id="module-manager-status" role="status" aria-live="polite"></p><p class="module-count" role="status" id="module-count">{count} of {total} modules</p><p class="module-manager-note">Enable switches control availability. Modules with setup notes also need their channels, roles or host providers configured.</p><div class="feature-module-grid">'+''.join(cards)+'</div><p id="module-empty"'+(' hidden' if count else '')+'>No modules match these filters.</p></div>'
-        return self.page(content)
+        content=f'<div data-module-manager data-guild="{gid}"><div class="modules-intro"><div><span class="eyebrow">Your server modules</span><h2>{esc(guild.name)}</h2><p>Open a section to customize related features together. Changes are shared with Discord.</p></div><a class="btn btn-ghost" href="/dashboard?guild={gid}">Server tools →</a></div><form action="/modules" method="get" class="module-filters" id="module-filters"><input type="hidden" name="guild" value="{gid}"><label>Find a module<input type="search" name="search" maxlength="100" value="{esc(query)}" placeholder="Welcome, moderation, games…"></label><label>Category<select name="category">{options}</select></label><label>Status<select name="state">{states}</select></label><button class="btn" type="submit">Filter</button></form><p id="module-manager-status" role="status" aria-live="polite"></p><p class="module-count" role="status" id="module-count">{count} of {total} modules</p><p class="module-manager-note">Enable switches control availability. Modules with setup notes also need their channels, roles or host providers configured.</p><div class="module-families">'+''.join(sections)+'</div><p id="module-empty"'+(' hidden' if count else '')+'>No modules match these filters.</p></div>'
+        response=self.page(content)
+        response.text=response.text.replace('<nav data-dashboard-sections aria-label="Server modules"></nav>','<nav data-dashboard-sections aria-label="Server modules">'+family_navigation(gid)+'</nav>')
+        return response
