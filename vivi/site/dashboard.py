@@ -32,8 +32,9 @@ from vivi.site.module_manager import ModuleManager
 from vivi.site.embed_dashboard import EmbedDashboard
 from vivi.site.feature_dashboard import FeatureDashboard
 from vivi.site.dashboard_auth import DashboardAuth
+from vivi.site.staff_dashboard import StaffDashboard
 
-class Dashboard(DashboardAuth,FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDashboard,DashboardTools):
+class Dashboard(StaffDashboard,DashboardAuth,FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDashboard,DashboardTools):
     def __init__(self,service):
         self.service=service; self.sessions={}; self.states={}; self.runner=None
         self.client=os.getenv('DISCORD_CLIENT_ID','').strip()
@@ -52,7 +53,7 @@ class Dashboard(DashboardAuth,FeatureDashboard,EmbedDashboard,ModuleManager,Webs
                              web.get('/revision',self.revision),web.post('/rollback',self.rollback),
                              web.post('/backup-now',self.backup_now),web.get('/scheduled-backup',self.scheduled_backup),
                              web.post('/aliases',self.aliases),web.get('/health',self.health),web.post('/xp-channel',self.xp_channel),
-                             web.post('/branding',self.branding),web.post('/filters',self.filters)]+self.feature_routes()+self.embed_routes()+self.studio_routes()+self.website_routes())
+                             web.post('/branding',self.branding),web.post('/filters',self.filters)]+self.staff_routes()+self.feature_routes()+self.embed_routes()+self.studio_routes()+self.website_routes())
 
     @web.middleware
     async def security(self,request,handler):

@@ -93,16 +93,28 @@ class TrayController:
         webbrowser.open(f'http://{parsed.hostname}:{parsed.port or 80}/')
 
 
+def tray_image(root=ROOT):
+    from PIL import Image
+    path=Path(root)/'assets/vivi/tray/vivi.png'
+    try:
+        with Image.open(path) as source:return source.convert('RGBA').resize((64,64),Image.Resampling.LANCZOS)
+    except OSError:
+        # A functional icon remains available if an older installation lacks artwork.
+        from PIL import ImageDraw
+        image=Image.new('RGBA',(64,64));draw=ImageDraw.Draw(image)
+        draw.rounded_rectangle((2,2,62,62),radius=14,fill='#140c1c',outline='#ff65ad',width=2)
+        draw.line([(15,18),(32,49),(49,18)],fill='#ff65ad',width=5)
+        return image
+
+
 def main():
     if os.name!='nt': raise SystemExit('The native tray is for Windows. Linux can use systemd and the web health dashboard.')
     try: import pystray
     except ImportError: raise SystemExit('Run setup.bat to install Windows tray support.')
-    from PIL import Image,ImageDraw,ImageFont
     folder=ROOT/'data'/'logs';folder.mkdir(parents=True,exist_ok=True)
     logging.basicConfig(filename=folder/'tray.log',level=logging.INFO)
     controller=TrayController()
-    image=Image.new('RGBA',(64,64),(0,0,0,0));draw=ImageDraw.Draw(image)
-    draw.ellipse((1,1,62,62),fill='#9678dd');draw.text((18,8),'V',font=ImageFont.load_default(size=42),fill='white')
+    image=tray_image()
     def safe(function):
         def action(icon,item):
             try: function()

@@ -24,11 +24,13 @@
   document.querySelectorAll('form[data-editor]').forEach(form=>{
     const welcome=form.dataset.editor==='welcome';const documentInput=form.elements.document;let doc=JSON.parse(documentInput.value);let elements=welcome?doc.elements:doc;
     const list=form.querySelector('.editor-elements');const canvas=form.querySelector('canvas');const background=form.elements.background;
+    const cardStyle=form.elements.card_style;if(welcome&&cardStyle){cardStyle.value=doc.style||'plain';cardStyle.addEventListener('change',()=>{doc.style=cardStyle.value;sync();});}
     if(background){background.value=doc.background;background.addEventListener('input',()=>{doc.background=background.value;sync();});}
     const sync=()=>{documentInput.value=JSON.stringify(doc);preview();};
     function preview(){
       if(welcome){
         const ctx=canvas.getContext('2d');ctx.fillStyle=doc.background;ctx.fillRect(0,0,900,260);
+        if(doc.style==='velvet'){ctx.strokeStyle='#71304f';ctx.lineWidth=2;ctx.strokeRect(10,10,880,240);ctx.strokeStyle='#ff65ad';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(210,32);ctx.lineTo(210,215);ctx.stroke();ctx.strokeStyle='#351c38';ctx.lineWidth=2;for(const offset of [0,28,56]){ctx.beginPath();ctx.moveTo(740+offset,15);ctx.lineTo(865+offset,130);ctx.lineTo(760+offset,245);ctx.stroke();}ctx.strokeStyle='#ff65ad';ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(813,35);ctx.lineTo(832,70);ctx.lineTo(851,35);ctx.stroke();}
         const values={header:'Welcome, Sample member!',server:'Your server',message:'Welcome to our community!',brand:'Vivi'};
         elements.forEach(e=>{ctx.fillStyle=e.color;if(e.type==='avatar'){ctx.beginPath();ctx.arc(e.x+e.size/2,e.y+e.size/2,e.size/2,0,2*Math.PI);ctx.fill();}else{ctx.font=`${e.size}px sans-serif`;ctx.textBaseline='top';ctx.fillText(e.type==='text'?e.value:values[e.type],e.x,e.y);}});
       }else{

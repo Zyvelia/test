@@ -282,3 +282,7 @@ Use the tray’s **Update Vivi from GitHub** option, or stop Vivi and run **upda
 ### Source folders
 
 Feature code is grouped under `vivi/core`, `vivi/server`, `vivi/games` and `vivi/site`. Website scripts/styles live in `vivi/site/web` and `vivi/site/static`; shared render assets stay in `vivi/assets`. Tests, documentation and helper scripts stay in their existing folders. Host entry points and the Windows/Linux launcher files remain easy to find and use the same commands. See [the source map](docs/STRUCTURE.md).
+
+### Staff workspace and Vivi artwork
+
+The dashboard now has a server home card, staff-only case search/details, reports and appeals, and a ticket list with status, priority, claimant and age. Welcome/goodbye editors preview messages live; welcome cards include a neon Vivi layout. The saved embed library remains shared with `/embed`, and disabling modules preserves their settings. Windows tray artwork is included as PNG and multi-size ICO. See [the staff dashboard guide](docs/STAFF-DASHBOARD.md).

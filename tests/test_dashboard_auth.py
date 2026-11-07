@@ -44,3 +44,7 @@ class DashboardAuthTests(unittest.IsolatedAsyncioTestCase):
   self.client.get.side_effect=aiohttp.ClientConnectionError('offline')
   with self.assertRaises(web.HTTPServiceUnavailable) as error:await self.auth.api_guilds(self.session)
   self.assertIn('still signed in',error.exception.text);self.assertGreater(self.session['expires'],time.time())
+
+ async def test_staff_discovery_does_not_broaden_administrator_authorization_cache(self):
+  rows=await self.auth.api_guilds(self.session,include_all=True);self.assertEqual(set(rows),{'1','2'})
+  admin=await self.auth.api_guilds(self.session);self.assertEqual(set(admin),{'1'});self.assertEqual(self.client.get.call_count,1)

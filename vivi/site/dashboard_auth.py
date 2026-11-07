@@ -7,11 +7,11 @@ from aiohttp import web
 
 DISCORD='https://discord.com/api/v10'
 class DashboardAuth:
-    async def api_guilds(self,session,fresh=False):
+    async def api_guilds(self,session,fresh=False,include_all=False):
         started=time.time();lock=session.setdefault('_guild_lock',asyncio.Lock())
         async with lock:
             now=time.time();cached=session.get('_guild_cache')
-            if cached and (cached['at']>=started or not fresh and now-cached['at']<30):return cached['rows']
+            if cached and (not include_all or 'all_rows' in cached) and (cached['at']>=started or not fresh and now-cached['at']<30):return cached['all_rows' if include_all else 'rows']
             if session.get('_guild_retry',0)>now:
                 raise web.HTTPTooManyRequests(text='Discord is busy. You are still signed in. Wait a moment before trying again.',headers={'Retry-After':str(max(1,int(session['_guild_retry']-now)+1))})
             try:
@@ -30,7 +30,7 @@ class DashboardAuth:
                     rows=await response.json()
                 if not isinstance(rows,list):raise web.HTTPServiceUnavailable(text='Discord returned an unexpected server list. Try again shortly.')
                 result={str(g['id']):g for g in rows if g.get('owner') or int(g.get('permissions',0))&8}
-                session['_guild_cache']={'at':time.time(),'rows':result};session.pop('_guild_retry',None)
-                return result
+                session['_guild_cache']={'at':time.time(),'rows':result,'all_rows':{str(g['id']):g for g in rows}};session.pop('_guild_retry',None)
+                return session['_guild_cache']['all_rows'] if include_all else result
             except (ValueError,KeyError,TypeError):raise web.HTTPServiceUnavailable(text='Discord returned unexpected account data. Your login is still active; retry shortly.') from None
             except (aiohttp.ClientError,asyncio.TimeoutError):raise web.HTTPServiceUnavailable(text='Could not reach Discord. You are still signed in; please try again shortly.') from None

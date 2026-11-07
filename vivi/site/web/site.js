@@ -6,6 +6,7 @@
   document.addEventListener('keydown',event=>{if(event.key==='Escape')closeMenu();});
   navigation?.addEventListener('click',event=>{if(event.target.closest('a'))closeMenu();});
   fetch('/api/status',{credentials:'omit'}).then(response=>{if(!response.ok)throw new Error('Status unavailable');return response.json();}).then(data=>{
+    document.querySelectorAll('[data-home-status]').forEach(el=>{el.textContent=data.online?'Online':'Offline';});
     document.querySelectorAll('[data-site-status]').forEach(el=>{el.textContent=data.online?'Vivi bot online':'Vivi bot offline';});
     document.querySelectorAll('[data-site-dot]').forEach(el=>{el.dataset.state=data.online?'online':'offline';});
   }).catch(()=>document.querySelectorAll('[data-site-status]').forEach(el=>{el.textContent='Connection status unavailable';}));
@@ -81,6 +82,7 @@
     function render(){
       const terms=search.value.toLowerCase().trim().split(/\s+/).filter(Boolean);let count=0;
       cards.forEach(card=>{const family=card.closest('[data-module-family]');const show=(category.value==='all'||card.dataset.group===category.value)&&(state.value==='all'||(state.value==='enabled')===(card.dataset.enabled==='true'))&&terms.every(term=>(card.dataset.featureModule.replaceAll('_',' ')+' '+card.textContent+' '+(family?.querySelector('summary strong')?.textContent||'')).toLowerCase().includes(term));card.hidden=!show;if(show)count++;});
+      document.querySelectorAll('[data-enabled-count]').forEach(el=>{el.textContent=cards.filter(card=>card.dataset.enabled==='true').length;});
       let sections=0;manager.querySelectorAll('[data-module-family]').forEach(family=>{
         const children=[...family.querySelectorAll('[data-feature-module]')],visible=children.some(card=>!card.hidden);family.hidden=!visible;if(visible)sections++;
         family.querySelector('.family-count').textContent=children.filter(card=>card.dataset.enabled==='true').length+' of '+children.length+' enabled';

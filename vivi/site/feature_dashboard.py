@@ -18,7 +18,7 @@ PREFIXES={
  'scam_images':('scam_',),'staff_reviews':('review',),'birthdays':('birthday_','timezone'),'daily_questions':('daily_','timezone'),
  'ai':('ai_',),'voice_rooms':('voice_',),'lfg':('lfg_',),'scheduled_backups':('backup_',),'translation':('language',)}
 TOOLS={
- 'welcome_cards':[('Welcome-card layout editor','/dashboard?guild={gid}&module=welcome_cards#module-settings')],
+ 'welcome_cards':[('Welcome-card layout editor','/configure?guild={gid}&module=welcome_cards')],
  'tickets':[('Ticket categories and staff setup','/dashboard?guild={gid}&module=tickets#module-settings')],
  'ticket_tools':[('Ticket categories and staff setup','/dashboard?guild={gid}&module=ticket_tools#module-settings')],
  'notifications':[('Subscriptions and destinations','/dashboard?guild={gid}&module=notifications#module-settings')],
@@ -31,6 +31,7 @@ TOOLS={
 class FeatureDashboard:
     def feature_routes(self):return [web.get('/configure',self.configure_module),web.post('/messages',self.save_messages)]
     def feature_page(self,gid,feature,content):
+        content=f'<p><a href="/staff?guild={gid}">Staff home · cases · reports · tickets →</a></p>'+content
         response=self.page(content)
         response.text=response.text.replace('<nav data-dashboard-sections aria-label="Server modules"></nav>','<nav data-dashboard-sections aria-label="Server modules">'+family_navigation(gid,family_for(feature))+'</nav>')
         return response
@@ -98,8 +99,11 @@ class FeatureDashboard:
         result='<div class="message-workspace"><form action="/messages" method="post" id="message-composer">'+self.hidden(session,gid)+f'<input type="hidden" name="kind" value="{kind}"><label><input type="checkbox" name="enabled" value="yes"'+(' checked' if enabled(store,gid,kind) else '')+f'> Enable {kind} messages</label><label>Destination channel '+self.select('channel',[(0,'Not set')]+[(c.id,'#'+c.name) for c in guild.text_channels],channel)+'</label><label>Message style '+self.select('mode',[('text','Text message'),('embed','Embed message')],mode)+'</label>'+f'<label>Message text<textarea name="text" rows="8" maxlength="1800">{E(text)}</textarea></label><p>Placeholders: <code>{{member}}</code>, <code>{{username}}</code>, <code>{{server}}</code>, <code>{{member_count}}</code>. Text welcomes can mention the joining member. Embeds and goodbye messages do not ping.</p>'
         options=[('','Keep current configured embed' if snapshot else 'Choose a saved embed')]+[(row['id'],row['data']['document']['name']) for row in store.records(gid,embed_writer.KIND)]
         result+='<label>Saved embed '+self.select('template',options)+'</label><p>Choosing a template copies it into these settings. Edit it in the embed writer, then select it here again to apply updates. Deleting the library template will not break messages.</p>'+f'<p><a href="/embeds?guild={gid}">Create or edit an embed →</a></p>'
-        if kind=='welcome':result+='<label><input type="checkbox" name="cards" value="yes"'+(' checked' if enabled(store,gid,'welcome_cards') else '')+f'> Add a welcome card to text messages</label><p><a href="/dashboard?guild={gid}&module=welcome_cards#module-settings">Customize welcome-card layout →</a></p>'
-        result+='<button name="action" value="preview">Preview without saving</button><button name="action" value="save">Save message settings</button></form><aside class="message-help"><h3>How it works</h3><p>Choose a channel, write your text or choose an embed, and save. Changes apply to future joins or departures. Existing messages stay unchanged.</p><p>Vivi needs View Channel and Send Messages, plus Embed Links for embeds or Attach Files for cards. You can save drafts while disabled.</p></aside></div>'
+        if kind=='welcome':result+='<label><input type="checkbox" name="cards" value="yes"'+(' checked' if enabled(store,gid,'welcome_cards') else '')+f'> Add a welcome card to text messages</label><p><a href="/configure?guild={gid}&module=welcome_cards">Customize welcome-card layout →</a></p>'
+        documents={row['id']:row['data']['document'] for row in store.records(gid,embed_writer.KIND)}
+        documents['']=snapshot
+        result+=f'<div id="message-preview-data" hidden data-documents="{E(json.dumps(documents))}" data-server="{E(guild.name)}" data-count="{E(getattr(guild,"member_count",0) or 0)}"></div>'
+        result+='<button name="action" value="preview">Preview without saving</button><button name="action" value="save">Save message settings</button></form><aside class="message-help"><h3>How it works</h3><p>Choose a channel, write your text or choose an embed, and save. Changes apply to future joins or departures. Existing messages stay unchanged.</p><p>Vivi needs View Channel and Send Messages, plus Embed Links for embeds or Attach Files for cards. You can save drafts while disabled.</p><h3>Live message preview</h3><article class="embed-preview" id="message-live-preview" aria-live="polite"></article><p>Sample member. Discord renders markdown and images on delivery.</p></aside></div><script src="/assets/message-preview.js" defer></script>'
         return result
 
     async def save_messages(self,request):

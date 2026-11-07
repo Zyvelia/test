@@ -3,16 +3,17 @@ import io
 import re
 from PIL import Image, ImageDraw, ImageFont
 
-DEFAULT_LAYOUT={'background':'#121826','elements':[
-    {'type':'avatar','x':30,'y':50,'size':160,'color':'#ffffff','value':''},
-    {'type':'header','x':220,'y':40,'size':28,'color':'#87ceeb','value':''},
-    {'type':'server','x':220,'y':90,'size':20,'color':'#ffffff','value':''},
-    {'type':'message','x':220,'y':130,'size':18,'color':'#c8d2e6','value':''},
-    {'type':'brand','x':20,'y':232,'size':12,'color':'#aab4c8','value':''}]}
+DEFAULT_LAYOUT={'background':'#140c1c','style':'velvet','elements':[
+    {'type':'avatar','x':36,'y':44,'size':160,'color':'#ff65ad','value':''},
+    {'type':'header','x':228,'y':46,'size':30,'color':'#ff65ad','value':''},
+    {'type':'server','x':228,'y':94,'size':20,'color':'#ffffff','value':''},
+    {'type':'message','x':228,'y':135,'size':18,'color':'#e5d3e8','value':''},
+    {'type':'brand','x':36,'y':230,'size':12,'color':'#c89ebd','value':''}]}
 
 def validate_layout(layout):
-    if not isinstance(layout,dict) or set(layout)-{'background','elements'}: raise ValueError('Invalid welcome layout.')
+    if not isinstance(layout,dict) or set(layout)-{'background','elements','style'}: raise ValueError('Invalid welcome layout.')
     if not re.fullmatch(r'#[0-9a-fA-F]{6}',str(layout.get('background',''))): raise ValueError('Use a hex background color.')
+    if layout.get('style','plain') not in {'plain','velvet'}:raise ValueError('Choose plain or velvet welcome-card style.')
     elements=layout.get('elements')
     if not isinstance(elements,list) or not 1<=len(elements)<=12: raise ValueError('Use 1–12 welcome elements.')
     for e in elements:
@@ -25,6 +26,11 @@ def validate_layout(layout):
 
 def render_layout(layout,name,server,message,avatar=None,greeting=None,brand='Vivi'):
     validate_layout(layout); image=Image.new('RGB',(900,260),layout['background']); draw=ImageDraw.Draw(image)
+    if layout.get('style')=='velvet':
+        draw.rounded_rectangle((10,10,889,249),radius=22,outline='#71304f',width=2)
+        draw.line([(210,32),(210,215)],fill='#ff65ad',width=3)
+        for offset in (0,28,56):draw.line([(740+offset,15),(865+offset,130),(760+offset,245)],fill='#351c38',width=2)
+        draw.line([(813,35),(832,70),(851,35)],fill='#ff65ad',width=4)
     values=dict(header=greeting or f'Welcome, {name[:30]}!',server=server[:60],message=message[:160],brand=brand[:60])
     for e in layout['elements']:
         if e['type']=='avatar':

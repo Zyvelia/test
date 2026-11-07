@@ -9,7 +9,7 @@ const fixture=spawnSync(process.env.VIVI_PYTHON||'python',[path.join(__dirname,'
 assert.equal(fixture.status,0,fixture.stderr);
 const dom=new JSDOM(fixture.stdout,{runScripts:'outside-only',url:'http://127.0.0.1:8765/'});
 const {window}=dom;const doc=window.document;
-window.HTMLCanvasElement.prototype.getContext=()=>({fillRect(){},beginPath(){},arc(){},fill(){},fillText(){}});
+window.HTMLCanvasElement.prototype.getContext=()=>({fillRect(){},strokeRect(){},moveTo(){},lineTo(){},stroke(){},beginPath(){},arc(){},fill(){},fillText(){}});
 window.eval(readFileSync(path.join(root,'vivi/site/static/studio.js'),'utf8'));
 const initialWarning=new window.Event('beforeunload',{cancelable:true});window.dispatchEvent(initialWarning);assert.ok(!initialWarning.defaultPrevented,'unchanged forms and empty file inputs must not warn');
 const panels=doc.getElementById('dashboard-panels');

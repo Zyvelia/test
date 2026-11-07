@@ -132,3 +132,7 @@ The module manager groups related controls into 11 expandable sections: Welcome 
 Search and category/status filters reveal matching nested controls. Configuration pages share related-setting tabs and the same grouped navigation. Welcome-card, XP, ticket, subscription, alias and scheduled-backup editors appear inside the relevant module. Their save actions return to that module. General setup/history/appearance tools remain under **Server tools**; the old prominent Detailed settings link is removed, and advanced bulk switches start collapsed.
 
 A busy Discord API does not log you out. The website preserves your profile during HTTP 429, transient service failures and connection problems. Only a genuine expired local session or Discord HTTP 401 asks you to reconnect. Permission denials use a permission message rather than telling a still-signed-in member that the login expired. All cache/session data remains in memory and disappears on bot restart.
+
+## Staff workspace
+
+The new [staff dashboard](STAFF-DASHBOARD.md) adds current staff-role checks, cases, reports/appeals and ticket lists. Use **Staff workspace** in the sidebar. Feature configuration remains administrator-only. The server home card shows real member count, online status and enabled modules; message editors update their sample preview live.
