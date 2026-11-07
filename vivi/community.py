@@ -236,6 +236,8 @@ class Community:
         from .invites import InviteTracker
         from .profiles import ProfileCards
         self.invites=InviteTracker(self); self.profiles=ProfileCards(self)
+        from .scam_images import ScamImages
+        self.scam_images=ScamImages(self)
         self.bot.add_listener(self.on_message,'on_message')
         self.bot.add_listener(self.on_message_edit,'on_message_edit')
         self.bot.add_listener(self.on_member_remove,'on_member_remove')
@@ -353,11 +355,12 @@ class Community:
                 await channel.send(text.replace('{member}',member.display_name).replace('{server}',member.guild.name))
 
     async def on_message_edit(self,before,after):
-        if before.content!=after.content: await self.on_message(after,edited=True)
+        if before.content!=after.content or [a.id for a in getattr(before,'attachments',[])]!=[a.id for a in getattr(after,'attachments',[])]: await self.on_message(after,edited=True)
 
     async def on_message(self,message,edited=False):
         if not message.guild or message.author.bot or not isinstance(message.author,discord.Member): return
         guild=message.guild; p=None
+        if await self.scam_images.inspect(message):return
         if (enabled(self.store,guild.id,'automod') or enabled(self.store,guild.id,'mention_protection')) and not message.author.guild_permissions.manage_messages:
             now=timestamp(); key=(guild.id,message.author.id); recent=self.spam[key]
             while recent and now-recent[0]>8: recent.popleft()

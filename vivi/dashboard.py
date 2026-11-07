@@ -254,7 +254,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
                 text=', '.join(str(x) for x in value) if typ is list else value
                 control='<textarea name="value">'+html.escape(str(text))+'</textarea>'
             else: control=f'<input name="value" type="number" value="{value}">'
-            fields+=control+'<button>Save setting</button></form>'
+            fields+=control+('<small>0 = exact file/pixel matching only. Values 1–4 enable similarity matching, which can match unrelated images.</small>' if key=='scam_image_distance' else '')+'<button>Save setting</button></form>'
         fields+='</details>'
         faq='<details><summary>FAQ manager</summary>'
         for question,answer in store.option(gid,'faq',{}).items():

@@ -26,7 +26,7 @@ PRIVACY=[
   'Vivi uses Discord user, server, channel, role and message identifiers; display names and avatars; server configuration; '
   'command inputs and interaction data. Enabled features can store moderation reasons and evidence, reports, appeals, '
   'support ticket records and transcripts, profile uploads, birthdays, timezones, reminders, game progress, XP, fictional currency and votes. '
-  'Message content can be processed for enabled moderation, activity and other message-based features. This does not mean every server message is saved; '
+  'Message content can be processed for enabled moderation, activity and other message-based features. Known scam-image filtering processes supported image attachments to compare them with staff-supplied reference hashes. It stores reference hashes, labels and staff IDs, rather than the original reference image files; moderation matches may create case records. This does not mean every server message is saved; '
   'ticket transcripts, case evidence and other feature records can retain message text or attachments. '
   'Support messages you send to the operator are also information you provide.'),
  ('Why information is used',

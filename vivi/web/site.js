@@ -52,7 +52,7 @@
     }
     setInterval(check,30000);window.addEventListener('focus',check);document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
     const settingPanel=document.getElementById('module-settings');
-    const prefixes={welcome:['welcome','autorole'],goodbye:['goodbye'],roles:['rules','autorole'],automod:['blocked','spam','dm_'],moderation:['warning','dm_','review'],birthdays:['birthday','timezone','daily_hour'],daily_questions:['daily','timezone'],ai:['ai_'],raid_protection:['raid_'],mention_protection:['mention_'],warning_thresholds:['warning_'],voice_rooms:['voice_'],scheduled_backups:['backup_'],ticket_tools:['review'],tickets:['review'],xp:['language'],translation:['language']};
+    const prefixes={scam_images:['scam_image_'],welcome:['welcome','autorole'],goodbye:['goodbye'],roles:['rules','autorole'],automod:['blocked','spam','dm_'],moderation:['warning','dm_','review'],birthdays:['birthday','timezone','daily_hour'],daily_questions:['daily','timezone'],ai:['ai_'],raid_protection:['raid_'],mention_protection:['mention_'],warning_thresholds:['warning_'],voice_rooms:['voice_'],scheduled_backups:['backup_'],ticket_tools:['review'],tickets:['review'],xp:['language'],translation:['language']};
     document.querySelectorAll('[data-module-configure]').forEach(link=>link.addEventListener('click',event=>{
       event.preventDefault();const feature=link.dataset.moduleConfigure;
       const specialized={custom_aliases:'Custom command aliases',xp:'Per-channel XP',notifications:'Twitch',instant_webhooks:'Twitch',tickets:'Ticket categories',ticket_tools:'Ticket categories'};

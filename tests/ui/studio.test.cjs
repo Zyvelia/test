@@ -50,5 +50,7 @@ const secondLink=doc.querySelectorAll('#section-links a')[1];secondLink.click();
 // A changed editor document warns on navigation; these checks never submit a server request.
 const warning=new window.Event('beforeunload',{cancelable:true});window.dispatchEvent(warning);assert.ok(warning.defaultPrevented,'changed forms must trigger a navigation warning');
 search.value='unfindable-setting-123';search.dispatchEvent(new window.Event('input'));assert.ok(doc.getElementById('palette-results').textContent.includes('No matching'));
+const inlineSearch=doc.getElementById('settings-search');const uploadForm=doc.getElementById('sample-upload');uploadForm.hidden=true;inlineSearch.value='upload';inlineSearch.dispatchEvent(new window.Event('input'));assert.ok(doc.querySelectorAll('#settings-search-results button').length>0);doc.querySelector('#settings-search-results button').click();assert.equal(uploadForm.hidden,false,'global search reveals a previously hidden matching control');assert.ok(uploadForm.closest('details').open);inlineSearch.value='no-such-global-setting';inlineSearch.dispatchEvent(new window.Event('input'));assert.ok(doc.getElementById('settings-search-status').textContent.includes('0 matching'));
+
 console.log('Dashboard DOM tests passed: panel keyboard order, form serialization, welcome editing, block drag/drop, escaped preview, search palette, mobile navigation, unsaved-change warning.');
 dom.window.close();

@@ -185,8 +185,15 @@ class ActionMenu(OwnedView):
             parent=self.bot.tree.get_command(root)
             if parent:result.update({c.qualified_name:c for c in parent.walk_commands() if isinstance(c,app_commands.Command)})
         if self.kind=='settings':
+            from .scam_images import actions
+            result.update(actions(self.bot))
             result.pop('admin feature',None);result.pop('admin features',None);result.pop('admin setting',None)
             result['setup']=self.bot.tree.get_command('setup')
+        if self.kind=='profile':
+            async def live_editor(i:discord.Interaction):
+                from .profile_editor import open_editor
+                await open_editor(self.bot,i)
+            result['profile live_editor']=app_commands.Command(name='live_editor',description='Edit a private draft with a live preview after every appearance change.',callback=live_editor)
         if self.kind=='ticket':
             async def create(i:discord.Interaction):
                 from .bot import OpenTicketView
@@ -230,6 +237,12 @@ class ActionMenu(OwnedView):
                     self.flow=ActionFlow(self,command);return await self.flow.begin(i)
                 self.page+=1 if value=='next' else -1;self.selected=None;self.flow=None;await i.response.edit_message(embed=self.draw(i),view=self)
             button.callback=clicked;self.add_item(button)
+        if self.kind=='profile':
+            editor=discord.ui.Button(label='Live profile editor',row=2,style=discord.ButtonStyle.success)
+            async def live(i):
+                from .profile_editor import open_editor
+                await open_editor(self.bot,i)
+            editor.callback=live;self.add_item(editor)
         embed.set_footer(text=f'Private menu · page {self.page+1}/{last+1} · /{self.kind} to reopen')
         return embed
 
@@ -260,7 +273,7 @@ class SettingForm(discord.ui.Modal):
             ids=current if name=='ai_channels' else [current] if current else []
             getter=self.menu.guild_object.get_role if name in {'autorole','rules_role','reviewer_role'} else self.menu.guild_object.get_channel
             self.input.default_values=[obj for ident in ids if (obj:=getter(ident)) is not None]
-        hint='Select channels or roles; leave empty to clear this setting.' if self.native else 'Comma-separated values' if typ is list else 'JSON object' if typ is dict else 'Numeric server channel or role ID, or a number' if typ is int else 'Choose a value'
+        hint='0 = exact only; 1–4 enables similarity and can match unrelated images.' if name=='scam_image_distance' else 'Select channels or roles; leave empty to clear this setting.' if self.native else 'Comma-separated values' if typ is list else 'JSON object' if typ is dict else 'Numeric server channel or role ID, or a number' if typ is int else 'Choose a value'
         self.add_item(discord.ui.Label(text=name.replace('_',' ').title()[:45],description=hint,component=self.input))
     async def on_error(self,i,error):await reply(i,'This setting could not be saved. Reopen the editor and try again.')
     async def on_submit(self,i):
@@ -320,6 +333,12 @@ class SettingsMenu(ActionMenu):
                     if self.key=='invite_tracking':self.bot.community.invites.cache.pop(i.guild_id,None)
                     await i.response.edit_message(embed=self.draw(i),view=self)
                 button.callback=save;self.add_item(button)
+        if self.tab=='features' and self.key=='scam_images':
+            references=discord.ui.Button(label='Manage scam-image references',row=2)
+            async def manage(i):
+                self.tab='actions';self.page=0;self.key=None;self.selected='scam_image_add';self.flow=None
+                await i.response.edit_message(embed=self.draw(i),view=self)
+            references.callback=manage;self.add_item(references)
         if os.getenv('DASHBOARD_ENABLED','').lower()=='true':
             from .webconfig import dashboard_endpoint
             try:
@@ -340,7 +359,7 @@ def register_menus(bot):
         def make(kind):
             async def menu(i:discord.Interaction):await open_menu(bot,i,kind)
             return menu
-        command=app_commands.Command(name=kind,description={'community':'Open community activities, polls, birthdays, reports and member tools.','ticket':'Open your private ticket menu, support tools and staff controls.','profile':'Open profile appearance, visibility, loadouts, uploads and previews.','settings':'Manage server features, settings, setup and backups through a private menu.'}[kind],callback=make(kind))
+        command=app_commands.Command(name=kind,description={'community':'Open community activities, polls, birthdays, reports and member tools.','ticket':'Open your private ticket menu, support tools and staff controls.','profile':'Open the live profile editor, privacy, loadouts, uploads and previews.','settings':'Manage features, scam-image filtering, server settings and backups in a private menu.'}[kind],callback=make(kind))
         command.guild_only=True
         if kind=='settings':command.default_permissions=discord.Permissions(administrator=True)
         bot.tree.add_command(command)

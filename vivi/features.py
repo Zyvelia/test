@@ -6,6 +6,7 @@ import re
 from urllib.parse import urlsplit
 
 FEATURES = {
+    'scam_images':False,
     'invite_tracking':False,'competitions':False,'teams':False,'library':False,'profiles':False,
     'staff_reviews': False, 'lfg': False, 'timezone_directory': False, 'reminders': False,
     'welcome': True, 'welcome_cards': False, 'goodbye': False, 'autorole': False,
@@ -19,6 +20,7 @@ FEATURES = {
     'raid_protection': False, 'mention_protection': False, 'warning_thresholds': False,
 }
 OPTION_TYPES = {
+    'scam_image_distance':int,
     'welcome_text': str, 'welcome_color': str, 'goodbye_channel': int, 'goodbye_text': str,
     'autorole': int, 'rules_role': int, 'rules_text': str, 'blocked_words': list,
     'blocked_domains': list, 'spam_limit': int, 'dm_explanations': bool,
@@ -88,7 +90,7 @@ def validate_option(key, value):
     if key=='backup_keep' and not 1<=value<=30: raise ValueError('Backup retention must be 1–30 files.')
     if key=='faq':
         if len(value)>50 or any(not isinstance(q,str) or not isinstance(a,str) or not 1<=len(q)<=150 or not 1<=len(a)<=1200 for q,a in value.items()): raise ValueError('Invalid FAQ backup.')
-    limits={'mention_limit':(1,100),'raid_limit':(3,100),'raid_window':(10,300),
+    limits={'scam_image_distance':(0,4),'mention_limit':(1,100),'raid_limit':(3,100),'raid_window':(10,300),
             'raid_lock_minutes':(1,60),'warning_count':(2,20),'warning_timeout_minutes':(1,40320),
             'warning_window_days':(1,365),'voice_user_limit':(0,99)}
     if key in limits and not limits[key][0]<=value<=limits[key][1]: raise ValueError(f'{key} must be {limits[key][0]}–{limits[key][1]}.')
