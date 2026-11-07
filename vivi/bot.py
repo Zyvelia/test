@@ -17,6 +17,10 @@ ROOT = Path(__file__).resolve().parents[1]
 LOG = logging.getLogger('vivi')
 
 
+class StartupConfigurationError(RuntimeError):
+    """An actionable setup failure that should not trigger automatic crash retries."""
+
+
 async def reply(interaction, text):
     from .i18n import interaction_language,localize_message
     text = localize_message(interaction_language(interaction),str(text))[:1950]
@@ -249,16 +253,52 @@ class ViviBot(commands.Bot):
         from .profiles import register_profiles
         register_competitions(self);register_library(self);register_invites(self);register_profiles(self)
         await self.tree.set_translator(ViviTranslator())
+        synced = await self.sync_application_commands()
         await self.community.start()
-        dev = os.getenv('DEV_GUILD_ID', '').strip()
-        if dev:
-            guild = discord.Object(id=int(dev))
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
-        else:
-            synced = await self.tree.sync()
         await self.community.productivity.start_aliases()
         LOG.info('Registered %s slash commands', len(synced))
+
+    async def sync_application_commands(self):
+        dev = os.getenv('DEV_GUILD_ID', '').strip()
+        guild = None
+        if dev:
+            try:
+                ident = int(dev)
+                if not 0 < ident < 2**64: raise ValueError
+            except ValueError:
+                raise StartupConfigurationError('DEV_GUILD_ID must be blank or a positive Discord server ID.') from None
+            guild = discord.Object(id=ident)
+            self.tree.copy_global_to(guild=guild)
+        try:
+            return await self.tree.sync(guild=guild) if guild else await self.tree.sync()
+        except app_commands.CommandSyncFailure as error:
+            raise StartupConfigurationError(
+                'Discord rejected the slash-command definitions. Update Vivi to the latest version; '
+                'restarting repeatedly will not fix an invalid command payload. '
+                f'Details: {error}'
+            ) from error
+        except (discord.Forbidden, discord.NotFound) as error:
+            application = self.application_id
+            identity = f'Application {application}' if application else 'This bot application'
+            if guild:
+                message = (
+                    f'{identity} cannot register slash commands in DEV_GUILD_ID={guild.id} '
+                    f'(HTTP {error.status}, Discord code {error.code}). '
+                    'Invite this bot to that server with BOTH bot and applications.commands scopes '
+                    '(Server Install), and confirm DEV_GUILD_ID is the server ID, not a channel or application ID. '
+                    'If unsure, leave DEV_GUILD_ID= blank for global commands; the bot must still be invited '
+                    'to your server. Confirm DISCORD_TOKEN belongs to the intended application. '
+                    'Startup stopped; fix .env or the server installation, then restart once.'
+                )
+            else:
+                message = (
+                    f'{identity} cannot register global slash commands '
+                    f'(HTTP {error.status}, Discord code {error.code}). '
+                    'Confirm DISCORD_TOKEN belongs to the intended application and reinstall the bot '
+                    'with both bot and applications.commands scopes (Server Install). '
+                    'Startup stopped; fix the installation, then restart once.'
+                )
+            raise StartupConfigurationError(message) from error
 
     async def on_ready(self):
         LOG.info('Connected as %s. Keep this window open.', self.user)
@@ -473,6 +513,8 @@ def main():
     bot = ViviBot(store)
     try:
         bot.run(token, log_handler=None)
+    except StartupConfigurationError as error:
+        LOG.error('%s', error); raise SystemExit(2)
     except discord.PrivilegedIntentsRequired:
         LOG.error('Enable Server Members Intent and Message Content Intent in the Discord Developer Portal, then restart.'); raise SystemExit(2)
     except discord.LoginFailure:

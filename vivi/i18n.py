@@ -144,13 +144,22 @@ def localize_html(language,content):
 
 NAME_TRANSLATIONS={'help':('ayuda','aide'),'tools':('herramientas','outils'),'community':('comunidad','communaute'),
                    'games':('juegos','jeux'),'economy':('economia','economie'),'music':('musica','musique'),
+                   'timezone':('zona_horaria','fuseau_horaire'),
                    'room':('sala','salon'),'notify':('avisos','annonces'),'afk':('ausente','absent'),'language':('idioma','langue')}
 
 class ViviTranslator(app_commands.Translator):
     async def translate(self,string,locale,context):
         language=str(locale).split('-')[0]
         if language not in {'es','fr'}: return None
-        if context.location==app_commands.TranslationContextLocation.command_name and string.message in NAME_TRANSLATIONS:
-            return NAME_TRANSLATIONS[string.message][0 if language=='es' else 1]
+        names={app_commands.TranslationContextLocation.command_name,
+               app_commands.TranslationContextLocation.group_name,
+               app_commands.TranslationContextLocation.parameter_name}
+        if context.location in names:
+            values=NAME_TRANSLATIONS.get(string.message)
+            if not values:return None
+            name=values[0 if language=='es' else 1]
+            # UI labels may contain spaces; Discord slash-command identifiers may not.
+            if not isinstance(name,str) or not re.fullmatch(r'[\w-]{1,32}',name) or name!=name.lower():return None
+            return name
         if string.message not in CATALOG: return None
         return tr(language,string.message)

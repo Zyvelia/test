@@ -194,6 +194,16 @@ support transcripts are retained. The database is not encrypted on disk.
 
 - **Token rejected:** reset it in Developer Portal → Bot and update .env.
 - **Privileged intents error:** enable both intents listed above, then restart.
+- **403 Missing Access while registering commands:** stop the launcher with Ctrl+C.
+  Reinvite Vivi using a Server Install with both `bot` and `applications.commands`
+  scopes. Check `DEV_GUILD_ID` is the actual server ID; leave `DEV_GUILD_ID=` blank
+  if you want global commands instead. Check the token belongs to the application
+  you invited. This setup error now stops automatic retries until you fix it.
+- **400 / 50035, `name_localizations` invalid:** update Vivi. A previous version
+  used translated UI labels containing spaces as slash-command names. The fixed
+  version uses `zona_horaria` / `fuseau_horaire` and validates translated identifiers.
+- **429 during command registration:** Discord’s library waits and retries automatically.
+  Leave the launcher running; repeated restarts can cause more rate limits.
 - **Commands missing:** check invite scopes, restart Discord, or use DEV_GUILD_ID.
 - **Missing permissions / role updates fail:** check channel overrides and ensure
   the bot role is above the target role. Discord administrators still need a bot
