@@ -9,8 +9,8 @@ import shutil
 import aiohttp
 import discord
 from dotenv import load_dotenv
-from .storage import Store, database_path
-from .features import enabled
+from vivi.core.storage import Store, database_path
+from vivi.core.features import enabled
 
 ROOT=Path(__file__).resolve().parents[1]
 

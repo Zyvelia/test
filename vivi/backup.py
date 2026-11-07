@@ -157,7 +157,7 @@ def main():
    if Path(args.key).expanduser().resolve().is_relative_to(ROOT.resolve()):raise ValueError('Keep keys outside the checkout.')
    print('Private key file created:',generate_key(args.key));return
   if args.action=='create':
-   from .storage import database_path
+   from vivi.core.storage import database_path
    print('Encrypted backup created:',create(ROOT,database_path(ROOT),args.key,args.file));return
   if not args.file or not args.target:raise ValueError('Restore requires --file and --target.')
   print('Authenticated data restored into:',restore(args.file,args.key,args.target))

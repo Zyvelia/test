@@ -13,8 +13,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from aiohttp import web
 import discord
 from vivi.bot import ViviBot
-from vivi.dashboard import Dashboard
-from vivi.storage import Store
+from vivi.site.dashboard import Dashboard
+from vivi.core.storage import Store
 
 async def main(port,dashboard_preview=False):
     os.environ['DASHBOARD_REDIRECT_URI']='http://127.0.0.1:8765/callback'

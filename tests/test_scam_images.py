@@ -6,9 +6,9 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock,MagicMock,patch
 import discord
 from PIL import Image,ImageDraw
-from vivi.scam_images import ScamImages,fingerprint,compare,MAX_BYTES,actions
-from vivi.features import validate_option
-from vivi.storage import Store
+from vivi.server.scam_images import ScamImages,fingerprint,compare,MAX_BYTES,actions
+from vivi.core.features import validate_option
+from vivi.core.storage import Store
 
 def picture(color='white',format='PNG',size=(160,120),**kwargs):
     image=Image.new('RGB',size,color);draw=ImageDraw.Draw(image);draw.rectangle((size[0]//5,10,size[0]//2,size[1]-10),fill='black');draw.line((0,0,*size),fill='red',width=6)
@@ -71,7 +71,7 @@ class ImageModeration(unittest.IsolatedAsyncioTestCase):
         self.store.close();self.store=Store(Path(self.tmp.name)/'db.sqlite3');self.service.store=self.store;scanner=ScamImages(self.service)
         message=self.message();self.assertTrue(await scanner.inspect(message));message.delete.assert_awaited_once()
     async def test_matched_attachment_stops_xp_and_attachment_only_edits_are_checked(self):
-        from vivi.community import Community
+        from vivi.server.community import Community
         self.store.set_option(1,'feature:xp',True);self.service.scam_images=self.scanner
         message=self.message();author=MagicMock(spec=discord.Member);author.id=10;author.bot=False;author.guild_permissions=discord.Permissions.none();message.author=author
         await Community.on_message(self.service,message);message.delete.assert_awaited_once();self.assertEqual(self.store.profile(1,10)['xp'],0)

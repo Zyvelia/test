@@ -8,11 +8,11 @@ from unittest.mock import AsyncMock,MagicMock
 import discord
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
-from vivi import embed_writer as writer
+from vivi.site import embed_writer as writer
 from vivi.bot import ViviBot
-from vivi.dashboard import Dashboard
-from vivi.storage import Store
-from vivi.embed_menu import EmbedMenu,DraftForm,PostView,DeleteView
+from vivi.site.dashboard import Dashboard
+from vivi.core.storage import Store
+from vivi.site.embed_menu import EmbedMenu,DraftForm,PostView,DeleteView
 
 class EmbedValidationTests(unittest.TestCase):
     def test_renders_all_supported_components(self):

@@ -8,8 +8,8 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
-from vivi.storage import Store
-from vivi.policy import may_close, may_moderate, safe_self_role
+from vivi.core.storage import Store
+from vivi.core.policy import may_close, may_moderate, safe_self_role
 from vivi.bot import ViviBot, OpenTicketView, RoleView, CloseTicketView, ConfirmClose, register_commands
 
 

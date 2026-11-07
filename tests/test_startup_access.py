@@ -7,7 +7,7 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock,MagicMock,patch
 import discord
 from vivi.bot import ViviBot,StartupConfigurationError,main
-from vivi.storage import Store
+from vivi.core.storage import Store
 from vivi import supervisor
 
 class CommandRegistrationTests(unittest.IsolatedAsyncioTestCase):
@@ -50,7 +50,7 @@ class CommandRegistrationTests(unittest.IsolatedAsyncioTestCase):
 class LauncherTests(unittest.TestCase):
  def test_configuration_error_exits_two_and_releases_store_and_lock(self):
   bot=MagicMock();bot.run.side_effect=StartupConfigurationError('Actionable configuration failure');store=MagicMock();lock=MagicMock()
-  with patch.dict(os.environ,{'DISCORD_TOKEN':'example-not-a-real-token','DEV_GUILD_ID':''}),patch('vivi.bot.load_dotenv'),patch('vivi.bot.logging.basicConfig'),patch('vivi.bot.Store',return_value=store),patch('vivi.runtime.SingleInstance',return_value=lock),patch('vivi.bot.ViviBot',return_value=bot),self.assertLogs('vivi',level='ERROR') as logs:
+  with patch.dict(os.environ,{'DISCORD_TOKEN':'example-not-a-real-token','DEV_GUILD_ID':''}),patch('vivi.bot.load_dotenv'),patch('vivi.bot.logging.basicConfig'),patch('vivi.bot.Store',return_value=store),patch('vivi.core.runtime.SingleInstance',return_value=lock),patch('vivi.bot.ViviBot',return_value=bot),self.assertLogs('vivi',level='ERROR') as logs:
    with self.assertRaises(SystemExit) as caught:main()
   self.assertEqual(caught.exception.code,2);self.assertTrue(any('Actionable configuration failure' in line for line in logs.output));self.assertFalse(any('example-not-a-real-token' in line for line in logs.output));store.close.assert_called_once();lock.close.assert_called_once()
  def test_supervisor_does_not_restart_a_configuration_exit(self):

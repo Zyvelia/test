@@ -19,11 +19,11 @@ from aiohttp.test_utils import make_mocked_request, TestClient, TestServer
 from PIL import Image
 
 from vivi.bot import ViviBot, register_commands
-from vivi.community import FeatureView, GameView, DeleteView, card_bytes, register_extra
-from vivi.dashboard import Dashboard
-from vivi.features import (FEATURES, SHOP, award_activity, blocked_word, convert, enabled,
+from vivi.server.community import FeatureView, GameView, DeleteView, card_bytes, register_extra
+from vivi.site.dashboard import Dashboard
+from vivi.core.features import (FEATURES, SHOP, award_activity, blocked_word, convert, enabled,
                              suspicious_link, validate_backup, validate_option, win_board)
-from vivi.storage import Store
+from vivi.core.storage import Store
 
 class PureTests(unittest.TestCase):
     def test_suspicious_links_without_opening_urls(self):
@@ -298,7 +298,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         self.bot.get_guild=lambda x:self.guild
         ident=self.store.put_record(1,'tempban',dict(user=7,until=time.time()-1))
         self.guild.fetch_ban=AsyncMock(side_effect=RuntimeError('Network unavailable'))
-        with self.assertLogs('vivi.community',level='ERROR'): await self.service.run_due()
+        with self.assertLogs('vivi.server.community',level='ERROR'): await self.service.run_due()
         self.assertIsNotNone(self.store.record(ident))
 
     async def test_shop_does_not_spend_twice_or_allow_negative_balance(self):
@@ -332,7 +332,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         await view.confirm.callback(i)
         self.assertEqual(self.store.profile(1,7)['birthday'],'07-23')
         i=self.i()
-        with patch('vivi.community.audit',new_callable=AsyncMock): await view.confirm.callback(i)
+        with patch('vivi.server.community.audit',new_callable=AsyncMock): await view.confirm.callback(i)
         self.assertEqual(self.store.profile(1,7)['birthday'],'')
         self.assertEqual(len(self.store.records(1,'privacy')),1)
 

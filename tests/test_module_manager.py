@@ -9,10 +9,10 @@ import discord
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 from vivi.bot import ViviBot
-from vivi.dashboard import Dashboard
-from vivi.storage import Store
-from vivi.features import FEATURES,enabled
-from vivi.module_manager import DESCRIPTIONS,group_for
+from vivi.site.dashboard import Dashboard
+from vivi.core.storage import Store
+from vivi.core.features import FEATURES,enabled
+from vivi.site.module_manager import DESCRIPTIONS,group_for
 
 class ModuleManagerTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -73,7 +73,7 @@ class ModuleManagerTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(response.location.startswith('https://discord.com/'))
 
     async def test_related_features_are_nested_once_and_details_link_is_removed(self):
-        from vivi.module_manager import FAMILIES
+        from vivi.site.module_manager import FAMILIES
         keys=[key for _,children,_ in FAMILIES.values() for key in children]
         self.assertEqual(set(keys),set(FEATURES)-{'faq'});self.assertEqual(len(keys),len(set(keys)))
         response=await self.dashboard.modules(self.request('/modules?guild=1'))

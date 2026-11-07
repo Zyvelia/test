@@ -68,6 +68,8 @@ other overwrite fields and will not overwrite a manual change away from False.
 A later human reban with a different audit reason is not removed by an old timer.
 Existing warnings are migrated into numbered legacy cases once on upgrade.
 
+`/kick` and `/ban` now ask the requesting moderator to confirm privately. Only that account can confirm or cancel, and the request expires after two minutes. Permissions, membership and hierarchy are checked again before removal. Cancelling, expiry or a rejected action creates no success case. Once Discord accepts the action, Vivi records its numbered case. Bans do not delete message history.
+
 `dm_explanations:true` enables best-effort DMs explaining the action, reason and
 case number. These are informational, not automatic punishments. Closed DMs or
 Discord's rules may prevent delivery, particularly after a kick or ban.

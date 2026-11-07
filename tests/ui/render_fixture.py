@@ -4,8 +4,8 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace as NS
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
-from vivi.storage import Store
-from vivi.dashboard import Dashboard
+from vivi.core.storage import Store
+from vivi.site.dashboard import Dashboard
 with tempfile.TemporaryDirectory() as temporary:
     store=Store(Path(temporary)/'vivi.sqlite3')
     guild=NS(text_channels=[],name='UI test')

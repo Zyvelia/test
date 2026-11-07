@@ -12,19 +12,19 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock,MagicMock,patch
 import discord
 from PIL import Image
-from vivi.storage import Store
+from vivi.core.storage import Store
 from vivi.bot import ViviBot,register_commands
-from vivi.community import register_extra,DeleteView
-from vivi.operations import register_operations
-from vivi.productivity import register_productivity
-from vivi.customization import register_customization
-from vivi.suite import register_suite
-from vivi.game_hub import register_games
-from vivi.more_games import Reversi,Minesweeper,WordSearch,Crossword,Spelling,CROSSWORDS,SPELLING,SAVED_TYPES,coord
-from vivi.competitions import schedule,report_result,register_competitions
-from vivi.guild_library import register_library,TeamPanel,clean_text
-from vivi.invites import estimate,register_invites
-from vivi.profiles import gradient_colors,register_profiles,DEFAULT_STYLE,BACKGROUNDS,FONTS,LAYOUTS,render_profile,visible_fields,validate_style,normalize_banner
+from vivi.server.community import register_extra,DeleteView
+from vivi.server.operations import register_operations
+from vivi.server.productivity import register_productivity
+from vivi.server.customization import register_customization
+from vivi.server.suite import register_suite
+from vivi.games.game_hub import register_games
+from vivi.games.more_games import Reversi,Minesweeper,WordSearch,Crossword,Spelling,CROSSWORDS,SPELLING,SAVED_TYPES,coord
+from vivi.games.competitions import schedule,report_result,register_competitions
+from vivi.server.guild_library import register_library,TeamPanel,clean_text
+from vivi.server.invites import estimate,register_invites
+from vivi.server.profiles import gradient_colors,register_profiles,DEFAULT_STYLE,BACKGROUNDS,FONTS,LAYOUTS,render_profile,visible_fields,validate_style,normalize_banner
 
 
 def competition(count,format='double'):
@@ -244,6 +244,6 @@ class ExpansionInteractions(unittest.IsolatedAsyncioTestCase):
  async def test_privacy_deletion_clears_new_personal_records_and_files(self):
   team=self.team();self.store.put_record(1,'invite_source',dict(user=10),'invite_source:1:10');self.store.put_record(1,'puzzle_progress',dict(user=10),'puzzle');self.store.put_record(1,'library_entry',dict(author=10),'entry')
   ident='b'*32;path=self.store.path.parent/'profile-banners'/'1'/(ident+'.png');path.parent.mkdir(parents=True);path.write_bytes(self.avatar);self.store.put_record(1,'profile_banner',dict(user=10,status='pending'),ident)
-  with patch('vivi.community.audit',new=AsyncMock()):await DeleteView(self.service,10,1).confirm.callback(self.i)
+  with patch('vivi.server.community.audit',new=AsyncMock()):await DeleteView(self.service,10,1).confirm.callback(self.i)
   for ident in ['invite_source:1:10','puzzle','entry',team]:self.assertIsNone(self.store.record(ident))
   self.assertFalse(path.exists())

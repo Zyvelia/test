@@ -12,18 +12,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 from aiohttp import web
 from vivi.bot import ViviBot,register_commands
-from vivi.community import register_extra
-from vivi.operations import register_operations,subscription
-from vivi.productivity import register_productivity
-from vivi.customization import register_customization
-from vivi.suite import register_suite,remove_warning,review_access,reminder_time,ticket_event,timeline,LFGView
-from vivi.game_hub import register_games,GameView
-from vivi.game_engines import ConnectFour,Chess,Checkers,Hangman,Memory,Sudoku,Battleship,solutions
-from vivi.storage import Store
-from vivi.studio_layout import DEFAULT_LAYOUT,validate_layout,render_layout,validate_announcement,announcement_embed
-from vivi.dashboard import Dashboard
-from vivi.a11y import audit_html
-from vivi.updates import check_updates,version
+from vivi.server.community import register_extra
+from vivi.server.operations import register_operations,subscription
+from vivi.server.productivity import register_productivity
+from vivi.server.customization import register_customization
+from vivi.server.suite import register_suite,remove_warning,review_access,reminder_time,ticket_event,timeline,LFGView
+from vivi.games.game_hub import register_games,GameView
+from vivi.games.game_engines import ConnectFour,Chess,Checkers,Hangman,Memory,Sudoku,Battleship,solutions
+from vivi.core.storage import Store
+from vivi.site.studio_layout import DEFAULT_LAYOUT,validate_layout,render_layout,validate_announcement,announcement_embed
+from vivi.site.dashboard import Dashboard
+from vivi.core.a11y import audit_html
+from vivi.core.updates import check_updates,version
 
 class GameRules(unittest.TestCase):
  def test_connect_four_vertical_win_and_turns(self):
@@ -249,7 +249,7 @@ class SuiteInteractions(unittest.IsolatedAsyncioTestCase):
   await asyncio.gather(view.click(self.i,'Join'),view.click(other,'Join'))
   self.assertEqual(len(self.store.record(ident)['data']['members']),2)
  async def test_stale_modal_cannot_move_replacement_game(self):
-  from vivi.game_hub import MoveModal
+  from vivi.games.game_hub import MoveModal
   hub=self.service.games;key=(1,10);hub.sessions[key]=dict(kind='hangman',players=[10],engine=Hangman())
   modal=MoveModal(hub,key);hub.sessions[key]=dict(kind='hangman',players=[10],engine=Hangman())
   await modal.on_submit(self.i);self.assertEqual(hub.sessions[key]['engine'].guesses,set())

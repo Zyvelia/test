@@ -10,8 +10,9 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from .storage import Store, database_path
-from .policy import safe_self_role, may_moderate, may_close
+from .server.moderation import ModerationConfirm,request_removal
+from vivi.core.storage import Store, database_path
+from vivi.core.policy import safe_self_role, may_moderate, may_close
 
 ROOT = Path(__file__).resolve().parents[1]
 LOG = logging.getLogger('vivi')
@@ -22,7 +23,7 @@ class StartupConfigurationError(RuntimeError):
 
 
 async def reply(interaction, text):
-    from .i18n import interaction_language,localize_message
+    from vivi.core.i18n import interaction_language,localize_message
     text = localize_message(interaction_language(interaction),str(text))[:1950]
     if interaction.response.is_done():
         await interaction.followup.send(text, ephemeral=True)
@@ -85,11 +86,11 @@ class OpenTicketView(discord.ui.View):
                        custom_id='aurora:ticket:open')
     async def open_ticket(self, i, button):
         if i.guild:
-            from .features import enabled
+            from vivi.core.features import enabled
             categories=self.bot.store.option(i.guild.id,'ticket_categories',{})
             if enabled(self.bot.store,i.guild.id,'ticket_tools') and categories:
                 if not await self.bot.community.need(i,'tickets'): return
-                from .operations import TicketCategoryView
+                from vivi.server.operations import TicketCategoryView
                 return await i.response.send_message('Choose a support category:',view=TicketCategoryView(self.bot,categories),ephemeral=True)
         await self.create_ticket(i)
 
@@ -187,7 +188,7 @@ class ConfirmClose(discord.ui.View):
             try:
                 # Fetch newest messages, then put the limited transcript in chronological order.
                 messages = [m async for m in i.channel.history(limit=1000)]
-                from .suite import ticket_event,timeline
+                from vivi.server.suite import ticket_event,timeline
                 ticket_event(self.bot.store,i.guild_id,i.channel_id,i.user.id,'closing','Transcript requested')
                 activity=timeline(self.bot.store,i.guild_id,i.channel_id,i.user.id,True)
                 lines = [activity,f'Ticket {i.channel_id}; owner {ticket["user"]}; closed by {i.user.id}',
@@ -224,7 +225,7 @@ class ViviBot(commands.Bot):
         self.store = store
         self.ticket_lock = asyncio.Lock()
         self.role_locks = {}
-        from .community import Community
+        from vivi.server.community import Community
         self.community = Community(self)
         self.tree.interaction_check = self.command_allowed
 
@@ -234,31 +235,31 @@ class ViviBot(commands.Bot):
         for record in self.store.roles():
             self.add_view(RoleView(self, record['guild'], record['role']))
         register_commands(self)
-        from .community import register_extra
+        from vivi.server.community import register_extra
         register_extra(self)
-        from .operations import register_operations
-        from .music import register_voice
+        from vivi.server.operations import register_operations
+        from vivi.server.music import register_voice
         register_operations(self); register_voice(self)
-        from .productivity import register_productivity
-        from .i18n import ViviTranslator
+        from vivi.server.productivity import register_productivity
+        from vivi.core.i18n import ViviTranslator
         register_productivity(self)
-        from .customization import register_customization
+        from vivi.server.customization import register_customization
         register_customization(self)
-        from .suite import register_suite
-        from .game_hub import register_games
+        from vivi.server.suite import register_suite
+        from vivi.games.game_hub import register_games
         register_suite(self); register_games(self)
-        from .idle_games import register_idle
+        from vivi.games.idle_games import register_idle
         register_idle(self)
-        from .competitions import register_competitions
-        from .guild_library import register_library
-        from .invites import register_invites
-        from .profiles import register_profiles
+        from vivi.games.competitions import register_competitions
+        from vivi.server.guild_library import register_library
+        from vivi.server.invites import register_invites
+        from vivi.server.profiles import register_profiles
         register_competitions(self);register_library(self);register_invites(self);register_profiles(self)
-        from .action_menus import register_menus
+        from vivi.server.action_menus import register_menus
         register_menus(self)
-        from .global_ban_menu import register_global_bans
+        from vivi.server.global_ban_menu import register_global_bans
         register_global_bans(self)
-        from .embed_menu import register_embeds
+        from vivi.site.embed_menu import register_embeds
         register_embeds(self)
         await self.tree.set_translator(ViviTranslator())
         synced = await self.sync_application_commands()
@@ -315,7 +316,7 @@ class ViviBot(commands.Bot):
         await self.community.on_join(member)
 
     async def command_allowed(self, i):
-        from .features import enabled
+        from vivi.core.features import enabled
         if not i.guild or i.command is None: return True
         self.store.actor.set(f'discord:{i.user.id}')
         mapping = {'role_button':'roles', 'ticket_panel':'tickets',
@@ -341,7 +342,7 @@ def register_commands(bot):
 
     @tree.command(name='help', description='Browse Vivi’s private help menu, search commands and save favorites.')
     async def help_command(i: discord.Interaction):
-        from .help_menu import open_help
+        from vivi.server.help_menu import open_help
         await open_help(bot,i)
 
     @tree.command(name='setup', description='Configure welcome, support, and private staff logging channels.')
@@ -446,29 +447,23 @@ def register_commands(bot):
         await reply(i, f'Removed timeout for {member}.')
         await bot.community.case(i.guild, member.id, i.user.id, 'timeout removed', 'Removed by moderator', member)
 
-    @tree.command(name='kick', description='Remove a member from this server.')
+    @tree.command(name='kick', description='Ask to kick a member; the requesting moderator must confirm first.')
     @app_commands.guild_only()
     @app_commands.default_permissions(kick_members=True)
     @app_commands.checks.has_permissions(kick_members=True)
     @app_commands.checks.bot_has_permissions(kick_members=True)
     async def kick(i: discord.Interaction, member: discord.Member, reason: app_commands.Range[str, 1, 500]):
         if not await guard(i, member): return
-        await i.response.defer(ephemeral=True)
-        await member.kick(reason=f'{i.user.id}: {reason}'[:512])
-        await reply(i, f'Kicked {member}.')
-        await bot.community.case(i.guild, member.id, i.user.id, 'kick', reason, member)
+        await request_removal(bot,i,member,'kick',reason)
 
-    @tree.command(name='ban', description='Ban a current member without deleting their message history.')
+    @tree.command(name='ban', description='Ask to ban a current member; confirm first and preserve message history.')
     @app_commands.guild_only()
     @app_commands.default_permissions(ban_members=True)
     @app_commands.checks.has_permissions(ban_members=True)
     @app_commands.checks.bot_has_permissions(ban_members=True)
     async def ban(i: discord.Interaction, member: discord.Member, reason: app_commands.Range[str, 1, 500]):
         if not await guard(i, member): return
-        await i.response.defer(ephemeral=True)
-        await member.ban(reason=f'{i.user.id}: {reason}'[:512], delete_message_seconds=0)
-        await reply(i, f'Banned {member}.')
-        await bot.community.case(i.guild, member.id, i.user.id, 'ban', reason, member)
+        await request_removal(bot,i,member,'ban',reason)
 
     @tree.command(name='purge', description='Delete up to 100 recent messages in this channel.')
     @app_commands.guild_only()
@@ -509,7 +504,7 @@ def main():
     dev = os.getenv('DEV_GUILD_ID', '').strip()
     if dev and (not dev.isdigit() or int(dev) <= 0):
         LOG.error('DEV_GUILD_ID must be blank or a positive Discord server ID.'); raise SystemExit(2)
-    from .runtime import SingleInstance
+    from vivi.core.runtime import SingleInstance
     try:
         instance=SingleInstance(ROOT/'data'/'vivi.lock')
         store = Store(database_path(ROOT))

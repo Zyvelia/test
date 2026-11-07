@@ -15,15 +15,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 from aiohttp import web
 from vivi.bot import ViviBot,register_commands,OpenTicketView
-from vivi.community import register_extra
-from vivi.dashboard import Dashboard
-from vivi.features import enabled
-from vivi.music import register_voice
-from vivi.operations import register_operations,subscription,RatingView
-from vivi.runtime import SingleInstance
-from vivi.settings import parse_value
+from vivi.server.community import register_extra
+from vivi.site.dashboard import Dashboard
+from vivi.core.features import enabled
+from vivi.server.music import register_voice
+from vivi.server.operations import register_operations,subscription,RatingView
+from vivi.core.runtime import SingleInstance
+from vivi.core.settings import parse_value
 from vivi.startup import script,systemd_unit,linux_startup
-from vivi.storage import Store,database_path
+from vivi.core.storage import Store,database_path
 from vivi.verify import provider_checks
 
 class Rank:
@@ -230,7 +230,7 @@ class ToolsTests(unittest.IsolatedAsyncioTestCase):
         view=RatingView(self.ops,ident);i=self.interaction();i.user=NS(id=8)
         await view.rate(i,5)
         self.assertEqual(self.store.record(ident)['data']['rating'],0)
-        with patch('vivi.operations.audit',new_callable=AsyncMock):
+        with patch('vivi.server.operations.audit',new_callable=AsyncMock):
             await view.rate(self.interaction(),4);await view.rate(self.interaction(),1)
         self.assertEqual(self.store.record(ident)['data']['rating'],4)
 
@@ -286,7 +286,7 @@ class ToolsTests(unittest.IsolatedAsyncioTestCase):
     async def test_provider_error_is_retained_for_retry_without_secrets(self):
         self.enable('notifications');self.store.put_record(1,'notification',subscription('twitch','someone',40),'watch')
         self.ops.events=AsyncMock(side_effect=RuntimeError('credential-secret-do-not-store'))
-        with self.assertLogs('vivi.operations',level='WARNING'): await self.ops.poll_notifications()
+        with self.assertLogs('vivi.server.operations',level='WARNING'): await self.ops.poll_notifications()
         data=self.store.record('watch')['data']
         self.assertEqual(data['error'],'RuntimeError');self.assertGreater(data['next_poll'],time.time())
         self.assertNotIn('credential-secret',json.dumps(data))

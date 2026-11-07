@@ -8,8 +8,8 @@ import discord
 from discord import app_commands
 from discord.app_commands.commands import validate_name
 from vivi.bot import ViviBot,StartupConfigurationError
-from vivi.i18n import ViviTranslator,NAME_TRANSLATIONS,tr
-from vivi.storage import Store
+from vivi.core.i18n import ViviTranslator,NAME_TRANSLATIONS,tr
+from vivi.core.storage import Store
 
 class NameTranslationTests(unittest.IsolatedAsyncioTestCase):
  async def test_timezone_names_are_identifiers_for_every_spanish_and_french_locale(self):

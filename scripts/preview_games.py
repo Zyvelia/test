@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from PIL import Image,ImageDraw
-from vivi.game_design import presentation,render,font
-from vivi.game_engines import Chess,ConnectFour,Memory,Battleship
-from vivi.more_games import Minesweeper,WordSearch
+from vivi.games.game_design import presentation,render,font
+from vivi.games.game_engines import Chess,ConnectFour,Memory,Battleship
+from vivi.games.more_games import Minesweeper,WordSearch
 
 
 def generate(output):

@@ -5,7 +5,7 @@ from types import SimpleNamespace as NS
 from unittest.mock import Mock,AsyncMock
 import aiohttp
 from aiohttp import web
-from vivi.dashboard_auth import DashboardAuth
+from vivi.site.dashboard_auth import DashboardAuth
 
 class DashboardAuthTests(unittest.IsolatedAsyncioTestCase):
  def setUp(self):

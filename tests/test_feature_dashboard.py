@@ -9,12 +9,12 @@ import discord
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 from vivi.bot import ViviBot
-from vivi.storage import Store
-from vivi.dashboard import Dashboard
-from vivi.features import FEATURES,OPTION_TYPES,validate_option
-from vivi.feature_dashboard import PREFIXES
-from vivi import embed_writer
-from vivi.message_templates import message_embed,expand
+from vivi.core.storage import Store
+from vivi.site.dashboard import Dashboard
+from vivi.core.features import FEATURES,OPTION_TYPES,validate_option
+from vivi.site.feature_dashboard import PREFIXES
+from vivi.site import embed_writer
+from vivi.site.message_templates import message_embed,expand
 
 class FeatureDashboardTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

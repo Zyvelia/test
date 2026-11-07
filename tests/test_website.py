@@ -1,7 +1,7 @@
 import os
 import unittest
 from unittest.mock import patch
-from vivi.webconfig import dashboard_endpoint
+from vivi.site.webconfig import dashboard_endpoint
 
 class WebsiteOriginTests(unittest.TestCase):
     def test_local_and_https_origins_have_separate_listener_and_cookie_rules(self):

@@ -13,16 +13,16 @@ import discord
 from aiohttp import web
 from PIL import Image
 from vivi.bot import ViviBot,register_commands,reply
-from vivi.community import register_extra
-from vivi.operations import register_operations
-from vivi.music import register_voice
-from vivi.productivity import register_productivity,validate_aliases,atomic_private
-from vivi.storage import Store
-from vivi.dashboard import Dashboard
-from vivi.i18n import tr,localize_message,localize_html,UI_LANGUAGE
+from vivi.server.community import register_extra
+from vivi.server.operations import register_operations
+from vivi.server.music import register_voice
+from vivi.server.productivity import register_productivity,validate_aliases,atomic_private
+from vivi.core.storage import Store
+from vivi.site.dashboard import Dashboard
+from vivi.core.i18n import tr,localize_message,localize_html,UI_LANGUAGE
 from vivi.healthcheck import healthy
 from vivi.tray import TrayController
-from vivi.runtime import SingleInstance
+from vivi.core.runtime import SingleInstance
 
 class PureTests(unittest.TestCase):
     def test_localization_preserves_placeholders_and_falls_back(self):
@@ -49,7 +49,7 @@ class PureTests(unittest.TestCase):
             atomic_private(path,b'{"ok":true}')
             self.assertEqual(path.read_bytes(),b'{"ok":true}')
             if os.name!='nt': self.assertEqual(path.stat().st_mode&0o777,0o600)
-            with patch('vivi.productivity.os.replace',side_effect=OSError('test')):
+            with patch('vivi.server.productivity.os.replace',side_effect=OSError('test')):
                 with self.assertRaises(OSError): atomic_private(path,b'changed')
             self.assertEqual(path.read_bytes(),b'{"ok":true}')
             self.assertEqual(len(list(Path(tmp).glob('*.tmp'))),0)
@@ -168,7 +168,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         self.enable('scheduled_backups');self.store.set_option(1,'backup_keep',2)
         self.store.save_profile(1,999,dict(self.store.profile(1,999),private_note='not in config'))
         self.bot._connection._guilds[1]=self.guild
-        with patch('vivi.productivity.ROOT',self.root):
+        with patch('vivi.server.productivity.ROOT',self.root):
             await self.p.tick();await self.p.tick()
             self.assertEqual(len(list((self.root/'data/backups/1').glob('*.json'))),1)
             for _ in range(3):self.p.backup(1)

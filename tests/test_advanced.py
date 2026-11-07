@@ -19,12 +19,12 @@ from aiohttp.test_utils import TestServer,TestClient
 from cryptography.exceptions import InvalidTag
 from vivi.backup import generate_key,create,restore,encrypt_file,key_bytes
 from vivi.bot import ViviBot
-from vivi.customization import validate_brand,validate_xp,accepts,filters_for,UI_BRAND
-from vivi.dashboard import Dashboard
-from vivi.features import award_activity
-from vivi.operations import subscription
-from vivi.storage import Store
-from vivi.webhooks import signing_secret
+from vivi.server.customization import validate_brand,validate_xp,accepts,filters_for,UI_BRAND
+from vivi.site.dashboard import Dashboard
+from vivi.core.features import award_activity
+from vivi.server.operations import subscription
+from vivi.core.storage import Store
+from vivi.server.webhooks import signing_secret
 
 class PolicyTests(unittest.TestCase):
  def test_xp_channel_amount_and_cooldown_keep_antispam(self):
@@ -183,7 +183,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
   body=dict(id='job-1',title='Build complete',url='https://example.com/build',tag='v1',category='success')
   request=self.request(body,watch='custom',event='custom');request.headers['X-Vivi-Signature']=request.headers.pop('X-Hub-Signature-256')
   await self.hooks.receive(request);await self.hooks.process()
-  from vivi.webhooks import Webhooks
+  from vivi.server.webhooks import Webhooks
   restarted=Webhooks(self.service)
   response=await restarted.receive(self.request(body,watch='custom',event='custom'))
   self.assertIn('duplicate',response.text);self.channel.send.assert_awaited_once()

@@ -49,8 +49,8 @@ def run():
 def main():
     if sys.stdout is None:sys.stdout=open(os.devnull,'w')
     if sys.stderr is None:sys.stderr=open(os.devnull,'w')
-    from .host_lock import host_lock
-    from .updater import automatic_update
+    from vivi.host_lock import host_lock
+    from vivi.updater import automatic_update
     try:
         with host_lock(ROOT):
             automatic_update(ROOT)

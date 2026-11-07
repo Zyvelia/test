@@ -5,8 +5,8 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock
 import discord
 from vivi.bot import ViviBot
-from vivi.help_menu import HelpMenu,SearchModal,open_help
-from vivi.storage import Store
+from vivi.server.help_menu import HelpMenu,SearchModal,open_help
+from vivi.core.storage import Store
 
 class HelpTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

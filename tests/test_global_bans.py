@@ -5,9 +5,9 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock,MagicMock,patch
 import discord
-from vivi.global_bans import GlobalBans,DEFAULT_OPERATOR_ID,is_operator,user_id
-from vivi.global_ban_menu import GlobalMenu,ConfirmGlobal
-from vivi.storage import Store
+from vivi.server.global_bans import GlobalBans,DEFAULT_OPERATOR_ID,is_operator,user_id
+from vivi.server.global_ban_menu import GlobalMenu,ConfirmGlobal
+from vivi.core.storage import Store
 
 TARGET=123456789012345678
 OP=DEFAULT_OPERATOR_ID
@@ -116,7 +116,7 @@ class GlobalBanRules(unittest.IsolatedAsyncioTestCase):
             await guild.apply(target,**kwargs);self.network.remove(TARGET,'Operator cancelled the entry',True,OP)
         guild.ban.side_effect=race;await self.network.tick();await self.network.tick();guild.unban.assert_awaited_once()
     async def test_join_enforcement_precedes_welcome_and_roles(self):
-        from vivi.community import Community
+        from vivi.server.community import Community
         self.optin();self.add();self.service.global_bans=self.network;self.service.operations=NS(on_join=AsyncMock())
         await Community.on_join(self.service,NS(id=TARGET,guild=self.guilds[0]));self.guilds[0].ban.assert_awaited_once();self.service.operations.on_join.assert_not_awaited()
     async def test_join_api_failure_is_saved_as_a_failed_server_result(self):

@@ -3,9 +3,9 @@ import random
 import sys
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from vivi.card_games import Blackjack,GoFish
-from vivi.network_puzzles import NETWORK_TYPES
-from vivi.game_design import presentation,render
+from vivi.games.card_games import Blackjack,GoFish
+from vivi.games.network_puzzles import NETWORK_TYPES
+from vivi.games.game_design import presentation,render
 
 def main():
     output=Path(__file__).resolve().parents[1]/'docs/assets'

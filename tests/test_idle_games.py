@@ -6,8 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock,patch
 from PIL import Image
-from vivi.idle_games import GAMES,CAP_MS,new_game,advance,act,cost,rates,prestige_goal,render,IdleService,IdleView,PrestigeView
-from vivi.storage import Store
+from vivi.games.idle_games import GAMES,CAP_MS,new_game,advance,act,cost,rates,prestige_goal,render,IdleService,IdleView,PrestigeView
+from vivi.core.storage import Store
 
 class IdleRules(unittest.TestCase):
     def test_starting_automation_earns_offline_without_collecting(self):

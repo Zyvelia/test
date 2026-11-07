@@ -77,8 +77,8 @@ backend port directly. A static-only host cannot run this dashboard backend.
 ## Customize and preview
 
 `WEBSITE_AVATAR` accepts `neon-bob`, `neon-headset`, `silver-crown` or `velvet-moth`.
-Artwork stays in `assets/vivi/avatars`; public site code is in `vivi/web` and
-`vivi/website.py`. Server-specific dashboard themes remain separate from public
+Artwork stays in `assets/vivi/avatars`; public site code is in `vivi/site/web` and
+`vivi/site/website.py`. Server-specific dashboard themes remain separate from public
 site branding. Bot status reflects its actual connection; no fabricated usage
 statistics are displayed.
 

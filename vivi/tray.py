@@ -6,7 +6,7 @@ import subprocess
 import threading
 import webbrowser
 from urllib.parse import urlsplit
-from .runtime import SingleInstance
+from vivi.core.runtime import SingleInstance
 
 ROOT=Path(__file__).resolve().parents[1]
 

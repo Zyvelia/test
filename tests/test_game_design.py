@@ -11,11 +11,11 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock,MagicMock,patch
 import discord
 from PIL import Image
-from vivi.game_design import presentation,legacy_presentation,render,payload,embed,THEMES
-from vivi.game_engines import Chess,Checkers,ConnectFour,Memory,Hangman,Sudoku,Battleship,TicTacToe
-from vivi.more_games import Reversi,Minesweeper,WordSearch,Crossword,Spelling
-from vivi.game_hub import GameHub,GameView,CoordinateView
-from vivi.storage import Store
+from vivi.games.game_design import presentation,legacy_presentation,render,payload,embed,THEMES
+from vivi.games.game_engines import Chess,Checkers,ConnectFour,Memory,Hangman,Sudoku,Battleship,TicTacToe
+from vivi.games.more_games import Reversi,Minesweeper,WordSearch,Crossword,Spelling
+from vivi.games.game_hub import GameHub,GameView,CoordinateView
+from vivi.core.storage import Store
 
 FACTORIES=dict(chess=Chess,checkers=Checkers,connect_four=ConnectFour,memory=Memory,hangman=Hangman,sudoku=Sudoku,battleship=Battleship,reversi=Reversi,minesweeper=Minesweeper,word_search=WordSearch,crossword=Crossword,spelling=Spelling,tictactoe=TicTacToe)
 def game(kind,engine=None):return dict(key=(1,10),kind=kind,engine=engine or FACTORIES[kind](),players=[10,20] if kind in {'chess','checkers','connect_four','battleship','reversi','tictactoe'} else [10],accepted=True,theme='velvet',expires=time.time()+300,ready=True)
@@ -105,7 +105,7 @@ class ArcadeInteractions(unittest.IsolatedAsyncioTestCase):
   g['message'].edit.assert_not_awaited()
  async def test_render_failure_falls_back_to_text(self):
   g=self.active('chess')
-  with patch('vivi.game_hub.payload',side_effect=OSError('Missing asset')):options=await self.hub.card(g)
+  with patch('vivi.games.game_hub.payload',side_effect=OSError('Missing asset')):options=await self.hub.card(g)
   self.assertTrue(g['text_only']);self.assertIn('content',options)
  async def test_missing_attachment_permissions_fall_back_without_losing_game(self):
   forbidden=discord.Forbidden(NS(status=403,reason='Forbidden'),'No attachments');message=NS(edit=AsyncMock());self.i.followup.send.side_effect=[forbidden,message]
@@ -123,7 +123,7 @@ class ArcadeInteractions(unittest.IsolatedAsyncioTestCase):
   g=self.active('chess');g['accepted']=False;view=GameView(self.hub,g['key'],True);self.i.user.id=20;await view.children[1].callback(self.i)
   self.assertNotIn(g['key'],self.hub.sessions);kwargs=g['message'].edit.call_args.kwargs;self.assertEqual(kwargs['embed'].description,'Challenge declined.');self.assertIsNone(kwargs['view']);kwargs['attachments'][0].close()
  async def test_completed_trivia_is_not_overwritten_by_timeout(self):
-  from vivi.community import GameView as TriviaView
+  from vivi.server.community import GameView as TriviaView
   self.service.reward=MagicMock();view=TriviaView(self.service,10,trivia=('Question',['First','Second'],0));view.message=NS(edit=AsyncMock())
   await view.play(self.i,0);await view.on_timeout();view.message.edit.assert_not_awaited()
   self.i.response.edit_message.call_args.kwargs['attachments'][0].close()

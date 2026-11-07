@@ -153,8 +153,8 @@ Do not use a self-service role to grant access to sensitive private channels.
 | `/warnings member` | Moderate Members | Show the latest ten warnings privately |
 | `/timeout member minutes reason` | Moderate Members | Timeout for 1 minute to 28 days |
 | `/untimeout member` | Moderate Members | Remove a timeout |
-| `/kick member reason` | Kick Members | Remove a member |
-| `/ban member reason` | Ban Members | Ban without erasing message history |
+| `/kick member reason` | Kick Members | Confirm privately before removing a member |
+| `/ban member reason` | Ban Members | Confirm privately before banning; preserve message history |
 | `/purge count` | Manage Messages | Delete up to 100 recent messages |
 
 Moderation also checks the human moderator's and bot's role hierarchy. The server
@@ -278,3 +278,7 @@ Use `/embed` or the dashboard’s **Embed writer** to create, save, preview and 
 ### Updating without manual downloads
 
 Use the tray’s **Update Vivi from GitHub** option, or stop Vivi and run **update.bat** (Windows) or **`bash update.sh`** (Linux) to update directly from GitHub. Both ZIP copies and clean Git checkouts are supported. Your `.env` and `data` are preserved; archive updates back up replaced source files. Optional `AUTO_UPDATE=true` in `.env` installs updates before launcher startup. Old copies can install it with the one-time terminal bootstrap in the guide. See [updates, recovery and rollback](docs/UPDATING.md).
+
+### Source folders
+
+Feature code is grouped under `vivi/core`, `vivi/server`, `vivi/games` and `vivi/site`. Website scripts/styles live in `vivi/site/web` and `vivi/site/static`; shared render assets stay in `vivi/assets`. Tests, documentation and helper scripts stay in their existing folders. Host entry points and the Windows/Linux launcher files remain easy to find and use the same commands. See [the source map](docs/STRUCTURE.md).

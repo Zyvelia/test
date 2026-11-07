@@ -6,8 +6,8 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock,patch
 import discord
 from vivi.bot import ViviBot
-from vivi.profile_editor import ProfileEditor,TextEditor,open_editor
-from vivi.storage import Store
+from vivi.server.profile_editor import ProfileEditor,TextEditor,open_editor
+from vivi.core.storage import Store
 
 class EditorTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

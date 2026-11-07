@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock,patch,MagicMock
 import discord
 from discord import app_commands
 from vivi.bot import ViviBot
-from vivi.storage import Store
-from vivi.action_menus import ActionMenu,SettingsMenu,ActionFlow,ActionForm,FlowView,SettingForm,allowed,invoke,scalar
-from vivi.help_menu import HelpMenu
+from vivi.core.storage import Store
+from vivi.server.action_menus import ActionMenu,SettingsMenu,ActionFlow,ActionForm,FlowView,SettingForm,allowed,invoke,scalar
+from vivi.server.help_menu import HelpMenu
 
 class ActionMenus(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -150,7 +150,7 @@ class ActionMenus(unittest.IsolatedAsyncioTestCase):
         for name in ['notify add','notify list','notify remove','notify filters','economy channel_xp','alias add','alias remove']:self.assertIn(name,menu.actions)
         for name in ['backup','restore','health','history','rollback','backup_now','branding','updates','verify']:self.assertIn('admin '+name,menu.actions)
         self.assertNotIn('admin feature',menu.actions)
-        from vivi.action_menus import action_label
+        from vivi.server.action_menus import action_label
         self.assertEqual(action_label(menu.actions['notify add']),'Notifications · Add');self.assertEqual(action_label(menu.actions['alias add']),'Aliases · Add')
         for name in ['setup','embed','globalban','warn','warnings','timeout','untimeout','kick','ban','purge']:self.assertIsInstance(self.bot.tree.get_command(name),app_commands.Command)
         for name in ['lockdown','unlock','slowmode','unban','tempban','history']:self.assertIsNotNone(self.bot.tree.get_command('mod').get_command(name))
@@ -165,5 +165,5 @@ class ActionMenus(unittest.IsolatedAsyncioTestCase):
         self.user.guild_permissions=discord.Permissions.none()
         self.assertFalse(allowed(self.bot,menu.actions['role_button'],self.i))
     async def test_favorites_for_old_admin_and_panel_commands_resolve_to_admin_menu(self):
-        from vivi.help_menu import normalize_favorites
+        from vivi.server.help_menu import normalize_favorites
         self.assertEqual(normalize_favorites(self.bot,['admin backup','role_button','ticket_panel','admin health','notify add','economy channel_xp','alias add']),['admin'])

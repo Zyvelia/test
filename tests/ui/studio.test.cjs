@@ -10,7 +10,7 @@ assert.equal(fixture.status,0,fixture.stderr);
 const dom=new JSDOM(fixture.stdout,{runScripts:'outside-only',url:'http://127.0.0.1:8765/'});
 const {window}=dom;const doc=window.document;
 window.HTMLCanvasElement.prototype.getContext=()=>({fillRect(){},beginPath(){},arc(){},fill(){},fillText(){}});
-window.eval(readFileSync(path.join(root,'vivi/static/studio.js'),'utf8'));
+window.eval(readFileSync(path.join(root,'vivi/site/static/studio.js'),'utf8'));
 const initialWarning=new window.Event('beforeunload',{cancelable:true});window.dispatchEvent(initialWarning);assert.ok(!initialWarning.defaultPrevented,'unchanged forms and empty file inputs must not warn');
 const panels=doc.getElementById('dashboard-panels');
 let sections=[...panels.querySelectorAll(':scope > details')];
@@ -36,7 +36,7 @@ announcement.querySelector('.new-type').value='field';announcement.querySelector
 const fieldsets=[...announcement.querySelectorAll('fieldset')];const drop=new window.Event('drop',{bubbles:true,cancelable:true});
 Object.defineProperty(drop,'dataTransfer',{value:{getData:()=>String(fieldsets.length-1)}});fieldsets[1].dispatchEvent(drop);
 assert.equal(JSON.parse(announcement.elements.document.value)[1].type,'field');
-const script=readFileSync(path.join(root,'vivi/static/studio.js'),'utf8');assert.ok(!script.includes('innerHTML'));
+const script=readFileSync(path.join(root,'vivi/site/static/studio.js'),'utf8');assert.ok(!script.includes('innerHTML'));
 // Command palette searches rendered authorized controls and opens without submitting.
 const openPalette=doc.getElementById('palette-open');openPalette.click();
 assert.ok(doc.getElementById('command-palette').hasAttribute('open'));

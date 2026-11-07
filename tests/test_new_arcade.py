@@ -11,11 +11,11 @@ from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock,patch
 import discord
 from PIL import Image
-from vivi.card_games import Blackjack,GoFish,total,RANKS
-from vivi.network_puzzles import NETWORK_TYPES,SIZES,rotate
-from vivi.game_design import presentation,render
-from vivi.game_hub import GameHub,GameView,CoordinateView
-from vivi.storage import Store
+from vivi.games.card_games import Blackjack,GoFish,total,RANKS
+from vivi.games.network_puzzles import NETWORK_TYPES,SIZES,rotate
+from vivi.games.game_design import presentation,render
+from vivi.games.game_hub import GameHub,GameView,CoordinateView
+from vivi.core.storage import Store
 
 def game(kind,engine):return dict(key=(1,10),kind=kind,engine=engine,players=[10,20] if kind in {'blackjack','go_fish'} else [10],accepted=True,ready=True,theme='velvet',expires=time.time()+1800,vs_vivi=kind in {'blackjack','go_fish'})
 
