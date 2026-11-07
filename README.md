@@ -25,6 +25,8 @@ command palette, unsaved-change warnings and mobile navigation.
 The [Vivi Arcade design update](docs/GAME-DESIGN.md) adds illustrated boards, three
 color themes, private quick controls and text alternatives. [See the game preview](docs/assets/arcade-preview.png).
 
+[Browse Vivi’s avatar options](assets/vivi/avatars/README.md) — four original PNGs with previews, ready for you to choose.
+
 ## What it does
 
 - Custom welcome cards, goodbye messages, safe newcomer roles, and rules acceptance.
