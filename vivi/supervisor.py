@@ -8,7 +8,7 @@ import time
 
 ROOT=Path(__file__).resolve().parents[1]
 
-def main():
+def run():
     if sys.stdout is None: sys.stdout=open(os.devnull,'w')
     if sys.stderr is None: sys.stderr=open(os.devnull,'w')
     folder=ROOT/'data'/'logs'; folder.mkdir(parents=True,exist_ok=True)
@@ -45,5 +45,18 @@ def main():
             time.sleep(delay); delay=min(delay*2,120)
     except KeyboardInterrupt:
         return
+
+def main():
+    if sys.stdout is None:sys.stdout=open(os.devnull,'w')
+    if sys.stderr is None:sys.stderr=open(os.devnull,'w')
+    from .host_lock import host_lock
+    from .updater import automatic_update
+    try:
+        with host_lock(ROOT):
+            automatic_update(ROOT)
+            run()
+    except Exception as error:
+        print(f'Vivi could not start: {error}. Stop other Vivi instances or fix the update error, then try again.',file=sys.stderr)
+        raise SystemExit(2)
 
 if __name__=='__main__': main()

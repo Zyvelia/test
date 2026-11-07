@@ -127,3 +127,7 @@ survive; active games, voice connections and audio queues do not.
 Docker Compose is another supported deployment option; see [DOCKER.md](DOCKER.md).
 The new history, backups, AFK, previews, health and alias features share the same
 implementation on Linux. Only the native Windows tray UI is Windows-specific.
+
+## GitHub updates
+
+Stop Vivi first (`systemctl --user stop vivi-bot` if using startup), run `bash update.sh`, then start it again. ZIP installations need no Git. Clean Git checkouts use a fast-forward update. Optional `.env` setting `AUTO_UPDATE=true` checks and updates before each normal launcher/service start. See [the update guide](UPDATING.md) for preservation, recovery and rollback details. Docker installations should rebuild their image instead.

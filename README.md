@@ -274,3 +274,7 @@ undo. Controls are bound to ZyVelia's configured numeric Discord user ID.
 ### Saved embed writer
 
 Use `/embed` or the dashboard’s **Embed writer** to create, save, preview and post reusable rules, announcements and guides. Both interfaces share the server’s template library. The website supports colors, links, images and reorderable fields; posting requires confirmation and channel permissions. See [the embed writer guide](docs/EMBEDS.md).
+
+### Updating without manual downloads
+
+Stop Vivi and run **update.bat** (Windows) or **`bash update.sh`** (Linux) to update directly from GitHub. Both ZIP copies and clean Git checkouts are supported. Your `.env` and `data` are preserved; archive updates back up replaced source files. Optional `AUTO_UPDATE=true` in `.env` installs updates before launcher startup. Old copies can install it with the one-time terminal bootstrap in the guide. See [updates, recovery and rollback](docs/UPDATING.md).
