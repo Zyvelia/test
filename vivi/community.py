@@ -564,7 +564,7 @@ def register_extra(bot):
     @app_commands.autocomplete(name=setting_choices)
     async def setting(i:discord.Interaction,name:str,value:app_commands.Range[str,1,1800]):
         from .features import OPTION_TYPES
-        if name not in OPTION_TYPES or name=='faq': return await reply(i,'Unknown setting; use /admin faq_add for FAQ entries.')
+        if name not in OPTION_TYPES or name=='faq': return await reply(i,'Unknown setting. Legacy FAQ data can be managed in the dashboard.')
         from .settings import parse_value, validate_resources
         try:
             parsed=parse_value(name,value); validate_resources(store,i.guild,name,parsed)
@@ -574,19 +574,6 @@ def register_extra(bot):
             await i.response.defer(ephemeral=True)
             await service.productivity.refresh_aliases(i.guild_id)
         await reply(i,f'Saved {name}.')
-
-    @admin_command('faq_add','Add or replace an FAQ answer; members search using /community faq.')
-    async def faq_add(i:discord.Interaction,question:app_commands.Range[str,1,150],answer:app_commands.Range[str,1,1200]):
-        items=store.option(i.guild_id,'faq',{})
-        if len(items)>=50 and question not in items: return await reply(i,'Maximum 50 FAQs; remove an old entry first.')
-        items[question]=answer; store.set_option(i.guild_id,'faq',items)
-        await reply(i,'FAQ saved.')
-
-    @admin_command('faq_remove','Remove an FAQ by its exact question.')
-    async def faq_remove(i:discord.Interaction,question:str):
-        items=store.option(i.guild_id,'faq',{}); existed=items.pop(question,None)
-        store.set_option(i.guild_id,'faq',items)
-        await reply(i,'FAQ removed.' if existed else 'That exact question was not found.')
 
     @admin_command('backup','Download server configuration only; excludes tokens, profiles and transcripts.')
     async def backup(i:discord.Interaction):
@@ -608,12 +595,6 @@ def register_extra(bot):
         except (ValueError,KeyError,TypeError) as e: return await reply(i,f'Backup not restored: {e}')
         await service.productivity.refresh_configuration(i.guild_id)
         await reply(i,'Configuration restored atomically. Personal data and live panels were not restored; check channel permissions and repost panels as needed.')
-
-    @community.command(name='faq',description='Search this server’s FAQ questions and answers.')
-    async def faq(i:discord.Interaction,search:app_commands.Range[str,1,100]):
-        if not await service.need(i,'faq'): return
-        matches=[(q,a) for q,a in store.option(i.guild_id,'faq',{}).items() if search.casefold() in (q+' '+a).casefold()]
-        await reply(i,('\n\n'.join(f'**{q}**\n{a}' for q,a in matches[:5])[:1900]) or 'No matching FAQ found.')
 
     @community.command(name='rules',description='Post server rules with a persistent acceptance button. Admin only.')
     async def rules(i:discord.Interaction,channel:discord.TextChannel):

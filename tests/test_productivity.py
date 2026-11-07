@@ -192,13 +192,12 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('custom_aliases is disabled',i.followup.send.call_args.args[0])
 
     async def test_alias_native_command_registration_and_closure(self):
-        self.enable('custom_aliases');self.enable('faq')
-        self.store.set_option(1,'faq',{'Rules':'Read the rules.'})
-        self.store.set_option(1,'aliases',{'rules':dict(target='faq',argument='Rules'),'aboutvivi':dict(target='help',argument='')})
+        self.enable('custom_aliases')
+        self.store.set_option(1,'aliases',{'rules':dict(target='commands',argument='rules'),'aboutvivi':dict(target='help',argument='')})
         await self.p.refresh_aliases(1)
         command=self.bot.tree.get_command('rules',guild=discord.Object(id=1))
         self.assertEqual(command.parameters,[])
-        i=self.i();await command.callback(i);self.assertIn('Read the rules.',i.followup.send.call_args.args[0])
+        i=self.i();await command.callback(i);self.assertIn('/community rules',i.followup.send.call_args.args[0])
         self.assertIsNone(self.bot.tree.get_command('rules',guild=discord.Object(id=2)))
         self.store.set_option(1,'aliases',{})
         await self.p.refresh_aliases(1)

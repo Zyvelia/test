@@ -123,7 +123,7 @@ translation API or AI is used for these built-in interface languages.
 Enable `custom_aliases`. An administrator can create shortcuts from /alias add or
 the dashboard. Example:
 
-`/alias add name:rules target:faq argument:rules`
+`/alias add name:rules target:commands argument:rules`
 
 This creates a server-only **/rules** command with the fixed FAQ search. It is also
 available through `/alias run name:rules`. `/alias list` lists definitions and
@@ -131,7 +131,7 @@ available through `/alias run name:rules`. `/alias list` lists definitions and
 history and rollback; native command registration is refreshed on changes/startup.
 Discord registration failures leave /alias run available and are shown in health.
 
-Targets are deliberately informational: ping, help, faq, commands, your own profile,
+Targets are deliberately informational: ping, help, commands, your own profile,
 music queue, or ticket status. The target's permissions/checks and feature switches
 still apply. No arbitrary code, shell commands, moderation actions, recursion or
 built-in command overrides are accepted. Fixed arguments are supported only for

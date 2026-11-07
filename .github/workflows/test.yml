@@ -95,3 +95,5 @@ jobs:
       - run: node --check vivi/static/studio.js
       - run: npm ci --prefix tests/ui
       - run: npm --prefix tests/ui test
+      - run: npx --prefix tests/ui playwright install --with-deps chromium
+      - run: npm --prefix tests/ui run test:website

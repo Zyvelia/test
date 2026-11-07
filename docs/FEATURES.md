@@ -35,10 +35,8 @@ channels. Do not give the same role automatically on join.
 
 ## FAQ and searchable commands
 
-Enable `faq`. Use `/admin faq_add question:... answer:...`, `/admin faq_remove`,
-and `/community faq search:...`. Maximum 50 entries. FAQ text is included in
-configuration backups. `/tools commands search:...` searches the current command
-menu. Discord's runtime permissions still apply even if a command is visible.
+The FAQ slash commands have been removed. Existing FAQ configuration is retained
+in backups and the dashboard for compatibility.
 
 ## AutoMod and additional moderation
 

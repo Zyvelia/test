@@ -17,7 +17,7 @@ from .bot import ROOT,reply
 from .features import enabled
 from .i18n import interaction_language,tr,NAME_TRANSLATIONS
 
-ALIAS_TARGETS={'ping':('ping',{}),'help':('help',{}),'faq':('community faq',{'search':None}),
+ALIAS_TARGETS={'ping':('ping',{}),'help':('help',{}),
                'commands':('tools commands',{'search':None}),'profile':('economy profile',{}),
                'queue':('music queue',{}),'ticket':('ticket status',{})}
 RESERVED={'ping','help','setup','role_button','ticket_panel','warn','warnings','timeout','untimeout','kick','ban','purge',
@@ -29,8 +29,8 @@ def validate_aliases(aliases):
     if not isinstance(aliases,dict) or len(aliases)>25: raise ValueError('Use at most 25 aliases per server.')
     for name,value in aliases.items():
         if not re.fullmatch(r'[a-z][a-z0-9_-]{0,19}',name) or name in RESERVED: raise ValueError('Alias names must be new lowercase command names (1–20 characters).')
-        if not isinstance(value,dict) or set(value)!={'target','argument'} or value['target'] not in ALIAS_TARGETS:
-            raise ValueError('Alias target must be ping, help, faq, commands, profile, queue or ticket.')
+        if not isinstance(value,dict) or set(value)!={'target','argument'} or value['target'] not in set(ALIAS_TARGETS)|{'faq'}:
+            raise ValueError('Alias target must be ping, help, commands, profile, queue or ticket.')
         if not isinstance(value['argument'],str) or len(value['argument'])>100: raise ValueError('Alias arguments must be at most 100 characters.')
         if value['target'] not in {'faq','commands'} and value['argument']: raise ValueError('This shortcut takes no fixed argument.')
 
@@ -124,6 +124,7 @@ class Productivity:
         aliases=self.store.option(i.guild_id,'aliases',{});definition=aliases.get(name)
         if not definition: return await reply(i,'That alias does not exist in this server.')
         validate_aliases({name:definition})
+        if definition['target']=='faq':return await reply(i,'FAQ commands were removed. Remove or retarget this legacy shortcut.')
         target,arguments=ALIAS_TARGETS[definition['target']]
         parts=target.split();command=self.bot.tree.get_command(parts[0])
         for part in parts[1:]: command=command.get_command(part) if command else None
@@ -142,6 +143,7 @@ class Productivity:
         guild=discord.Object(id=guild_id)
         for name in self.alias_names.get(guild_id,set()): self.bot.tree.remove_command(name,guild=guild)
         for name in definitions:
+            if definitions[name]['target']=='faq':continue
             if self.bot.tree.get_command(name) is not None: raise ValueError('Alias conflicts with a built-in command.')
             def make(alias_name):
                 async def execute(i:discord.Interaction): await self.run_alias(i,alias_name)
@@ -227,6 +229,7 @@ def register_productivity(bot):
     @app_commands.check(administrator)
     @app_commands.choices(target=[app_commands.Choice(name=x,value=x) for x in ALIAS_TARGETS])
     async def add(i:discord.Interaction,name:str,target:str,argument:app_commands.Range[str,0,100]=''):
+        if target not in ALIAS_TARGETS:return await reply(i,'Choose a supported shortcut target. FAQ commands were removed.')
         values=store.option(i.guild_id,'aliases',{});values[name]=dict(target=target,argument=argument)
         validate_aliases(values)
         if bot.tree.get_command(name): raise ValueError('That name belongs to a built-in command.')

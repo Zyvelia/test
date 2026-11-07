@@ -1,4 +1,4 @@
-"""Optional loopback dashboard. OAuth tokens and sessions remain in memory only."""
+"""Website and permission-checked dashboard. OAuth tokens remain in memory only."""
 import hashlib
 import io
 import json
@@ -24,22 +24,19 @@ from .i18n import UI_LANGUAGE,localize_html,tr
 
 from .studio import StudioDashboard
 
-class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
+from .website import Website,esc
+from .webconfig import dashboard_endpoint
+
+class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
     def __init__(self,service):
         self.service=service; self.sessions={}; self.states={}; self.runner=None
         self.client=os.getenv('DISCORD_CLIENT_ID','').strip()
         self.secret=os.getenv('DISCORD_CLIENT_SECRET','').strip()
         self.redirect=os.getenv('DASHBOARD_REDIRECT_URI','http://127.0.0.1:8765/callback').strip()
-        parsed=urlsplit(self.redirect)
-        if (parsed.scheme!='http' or parsed.hostname not in {'127.0.0.1','localhost'}
-                or parsed.path!='/callback' or parsed.query or parsed.fragment or parsed.username is not None):
-            raise ValueError('Dashboard redirect must be http://127.0.0.1:PORT/callback or localhost equivalent.')
-        self.host=parsed.hostname; self.port=parsed.port or 80
-        self.bind_host=os.getenv('DASHBOARD_BIND_HOST',self.host)
-        if self.bind_host not in {'127.0.0.1','localhost'} and not (self.bind_host=='0.0.0.0' and os.getenv('VIVI_CONTAINER')=='1'):
-            raise ValueError('An external dashboard bind is allowed only in explicit container mode.')
+        for key,value in dashboard_endpoint(self.redirect).items():setattr(self,key,value)
+        self.website_application_id()
         self.app=web.Application(client_max_size=262144,middlewares=[self.security])
-        self.app.add_routes([web.get('/',self.index),web.get('/login',self.login),web.get('/callback',self.callback),
+        self.app.add_routes([web.get('/',self.site_home),web.get('/dashboard',self.index),web.get('/login',self.login),web.get('/callback',self.callback),
                              web.post('/feature',self.feature),web.post('/logout',self.logout),
                              web.post('/setting',self.setting),web.post('/setup',self.setup),
                              web.post('/faq',self.faq),web.post('/ticket-category',self.ticket_category),
@@ -49,14 +46,20 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
                              web.get('/revision',self.revision),web.post('/rollback',self.rollback),
                              web.post('/backup-now',self.backup_now),web.get('/scheduled-backup',self.scheduled_backup),
                              web.post('/aliases',self.aliases),web.get('/health',self.health),web.post('/xp-channel',self.xp_channel),
-                             web.post('/branding',self.branding),web.post('/filters',self.filters)]+self.studio_routes())
+                             web.post('/branding',self.branding),web.post('/filters',self.filters)]+self.studio_routes()+self.website_routes())
 
     @web.middleware
     async def security(self,request,handler):
         # DNS rebinding protection: the loopback listener accepts only its configured authority.
-        expected=f'{self.host}:{self.port}'
-        if request.host not in {expected, self.host if self.port==80 else expected}:
-            raise web.HTTPForbidden(text='Unexpected Host header.')
+        port=self.public_port if self.scheme=='https' else self.port
+        expected={f'{self.host}:{port}'}
+        if port==(443 if self.scheme=='https' else 80):expected.add(self.host)
+        if request.host.lower() not in expected:
+            error=web.HTTPForbidden(text='Unexpected Host header.');self.headers(error);raise error
+        if request.method not in {'GET','HEAD','OPTIONS'} and request.headers.get('Origin'):
+            origin=f'{self.scheme}://{self.host}'+(f':{port}' if port!=(443 if self.scheme=='https' else 80) else '')
+            if request.headers['Origin']!=origin:
+                error=web.HTTPForbidden(text='Unexpected request origin.');self.headers(error);raise error
         locale_token=UI_LANGUAGE.set('en')
         brand_token=UI_BRAND.set({})
         actor_token=self.service.store.actor.set('dashboard')
@@ -72,9 +75,10 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
 
     @staticmethod
     def headers(response):
-        response.headers.update({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',
-            'Referrer-Policy':'no-referrer','X-Frame-Options':'DENY',
-            'Content-Security-Policy':"default-src 'none'; script-src 'self'; img-src 'self' blob:; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
+        response.headers.setdefault('Cache-Control','no-store')
+        response.headers.update({'X-Content-Type-Options':'nosniff',
+            'Referrer-Policy':'same-origin','X-Frame-Options':'DENY',
+            'Content-Security-Policy':"default-src 'none'; script-src 'self'; img-src 'self' blob:; font-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
 
     def session(self,request):
         sid=request.cookies.get('vivi_session',''); session=self.sessions.get(sid)
@@ -103,25 +107,24 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
     def page(self,content):
         content=localize_html(UI_LANGUAGE.get(),content)
         branding=UI_BRAND.get()
-        try: validate_brand(branding)
-        except ValueError: branding={}
-        palette=dict(THEMES[branding.get('theme','midnight')]);palette['accent']=branding.get('accent',palette['accent'])
-        css=f"body{{background:{palette['background']};color:{palette['text']}}}form,input,select,textarea{{background:{palette['panel']};color:{palette['text']}}}a{{color:{palette['accent']}}}button{{background:{palette['accent']};color:{palette['background']}}}"
-        return web.Response(content_type='text/html',text='<!doctype html><html lang="'+UI_LANGUAGE.get()+'"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vivi Dashboard</title>'
-            '<style>body{font:16px system-ui;background:#111827;color:#e5e7eb;max-width:850px;margin:40px auto;padding:20px}'
-            'a{color:#87ceeb}form{margin:12px 0;padding:14px;background:#1f2937;border-radius:12px}'
-            'button{padding:8px 14px;border:0;border-radius:8px;cursor:pointer}small{color:#aab6c9}'
-            'input,select,textarea{box-sizing:border-box;max-width:100%;padding:9px;margin:5px;background:#111827;color:#fff;border:1px solid #6b7280;border-radius:6px}'
-            'textarea{width:95%;min-height:70px}summary{font-size:1.3em;cursor:pointer;padding:15px}label{display:block}table{width:100%;text-align:left;display:block;overflow-x:auto}td{padding:7px}canvas{max-width:100%;height:auto}fieldset{min-width:0;margin:10px 0}dialog{width:min(90vw,700px);max-height:80vh;background:#1f2937;color:#fff;border:1px solid #aab6c9;border-radius:12px}dialog::backdrop{background:#0009}#palette-results button{display:block;width:100%;text-align:left;margin:6px 0}#section-links a{display:block;padding:10px}#mobile-navigation{margin:12px 0}button{min-height:40px}@media(max-width:600px){body{margin:8px auto;padding:10px}form{padding:10px}input,select,textarea{width:100%;margin:5px 0}input[type=checkbox],input[type=color]{width:auto}summary{font-size:1.1em}summary button{margin:4px}button{min-height:44px;max-width:100%}#dashboard-controls{position:sticky;top:0;background:#1f2937;padding:6px;z-index:2}#mobile-navigation[open]{max-height:45vh;overflow:auto}}</style><script src="/assets/studio.js" defer></script></head><body><nav aria-label="Dashboard navigation"><a href="/">Servers</a> · <a href="#main-content">Skip to main content</a></nav><main id="main-content"><div id="studio-status" role="status" aria-live="polite"></div>'
-            '<style>'+css+'</style><h1>'+html.escape(branding.get('name','Vivi'))+' · '+html.escape(tr(UI_LANGUAGE.get(),'Server Dashboard'))+'</h1><p>'+html.escape(branding.get('tagline',''))+'</p>'+content+'</main></body></html>')
+        try:validate_brand(branding)
+        except ValueError:branding={}
+        palette=dict(THEMES[branding.get('theme','midnight')]) if branding else dict(background='#0d0b12',panel='#15111d',text='#f6f0f6',accent='#ff65ad');palette['accent']=branding.get('accent',palette['accent'])
+        css=f"body{{background:{palette['background']};color:{palette['text']}}}:root{{--bg:{palette['background']};--surface:{palette['panel']};--text:{palette['text']};--pink:{palette['accent']}}}"
+        return self.site_shell(content,'Server dashboard','dashboard',True,branding,css)
 
     async def index(self,request):
-        if not request.cookies.get('vivi_session'): return self.page('<p><a href="/login">Sign in with Discord</a></p><p>Local dashboard: server administrators only.</p>')
+        if not request.cookies.get('vivi_session'):return self.site_shell('<div class="container"><section class="error-card"><div class="eyebrow" style="justify-content:center">Your server workspace</div><h1>Make yourself at home.</h1><p>Sign in with Discord to manage servers you own or administer. Vivi checks your current permissions before applying changes.</p><a class="btn btn-primary" href="/login">Sign in with Discord</a></section></div>','Your dashboard','dashboard')
         session=self.session(request)
         if not request.query.get('guild'):
             guilds=await self.api_guilds(session)
-            rows=[f'<li><a href="/?guild={html.escape(gid)}">{html.escape(g["name"])}</a></li>' for gid,g in guilds.items() if self.service.bot.get_guild(int(gid))]
-            return self.page('<h2>Your servers</h2><ul>'+''.join(rows)+'</ul>'+self.logout_form(session))
+            rows=[]
+            for gid,g in guilds.items():
+                installed=self.service.bot.get_guild(int(gid)) is not None
+                href='/dashboard?'+urlencode({'guild':gid}) if installed else '/invite?'+urlencode({'guild_id':gid})
+                initials=''.join(word[0] for word in g['name'].split()[:2]) or 'S'
+                rows.append(f'<article class="server-card"><div class="server-avatar">{esc(initials)}</div><h3>{esc(g["name"])}</h3><p>{"Vivi is ready to help." if installed else "Invite Vivi to get started."}</p><a class="btn {"btn-primary" if installed else "btn-ghost"}" href="{esc(href)}">{"Manage server" if installed else "Add Vivi"}</a></article>')
+            return self.page('<h2>Your servers</h2><p>Choose where you want to make things happen.</p><div class="server-grid">'+(''.join(rows) or '<p>No servers with Administrator permission were found.</p>')+'</div>'+self.logout_form(session))
         try: guild=int(request.query['guild'])
         except ValueError: raise web.HTTPBadRequest(text='Invalid server ID.')
         session=await self.authorize(request,guild)
@@ -135,14 +138,15 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
                          f'<input type="hidden" name="guild" value="{guild}"><input type="hidden" name="feature" value="{feature}">'
                          f'<input type="hidden" name="enabled" value="{str(not on).lower()}"><b>{feature}</b>: {"ON" if on else "OFF"} '
                          f'<button>{"Disable" if on else "Enable"}</button></form>')
-        return self.page(self.personalize(f'<h2>{name}</h2><p><a href="/">All servers</a></p><p>Manage Vivi for this server. Optional AI, voice and notification providers need local host configuration.</p><details><summary>Feature switches</summary>'+''.join(forms)+'</details>'+self.settings_forms(guild,session)+self.logout_form(session),guild,session))
+        return self.page(self.personalize(f'<h2>{name}</h2><p><a href="/dashboard">All servers</a></p><p>Manage Vivi for this server. Optional AI, voice and notification providers need local host configuration.</p><details><summary>Feature switches</summary>'+''.join(forms)+'</details>'+self.settings_forms(guild,session)+self.logout_form(session),guild,session))
 
     @staticmethod
     def logout_form(session):
         return f'<form action="/logout" method="post"><input type="hidden" name="csrf" value="{session["csrf"]}"><button>Sign out</button></form>'
 
     async def login(self,request):
-        if not self.client or not self.secret: raise web.HTTPServiceUnavailable(text='Host must configure Discord OAuth client ID and secret.')
+        if not self.client or not self.secret:
+            response=self.site_shell('<div class="container"><section class="error-card"><h1>Sign-in isn’t ready just yet.</h1><p>The bot owner needs to finish Discord login setup. You can still invite Vivi and use its slash commands.</p><a class="btn btn-primary" href="/support">Get setup help</a></section></div>','Sign-in setup');response.set_status(503);return response
         now=time.time(); self.states={k:v for k,v in self.states.items() if v['expires']>now}
         self.sessions={k:v for k,v in self.sessions.items() if v['expires']>now}
         if len(self.states)>=1000: raise web.HTTPTooManyRequests(text='Too many pending sign-ins. Try later.')
@@ -150,7 +154,7 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
         self.states[state]={'expires':now+600,'verifier':verifier}
         query=urlencode(dict(client_id=self.client,redirect_uri=self.redirect,response_type='code',scope='identify guilds',state=state))
         response=web.HTTPFound('https://discord.com/oauth2/authorize?'+query)
-        response.set_cookie('vivi_oauth',verifier,max_age=600,httponly=True,samesite='Lax',path='/callback')
+        response.set_cookie('vivi_oauth',verifier,max_age=600,httponly=True,samesite='Lax',path='/callback',secure=self.secure_cookies)
         return response
 
     async def callback(self,request):
@@ -172,8 +176,8 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
             identity=await who.json()
         self.sessions[sid]={'user_id':int(identity['id']),'token':data['access_token'],'csrf':secrets.token_urlsafe(32),
                             'expires':time.time()+min(int(data.get('expires_in',3600)),3600)}
-        response=web.HTTPFound('/')
-        response.set_cookie('vivi_session',sid,max_age=3600,httponly=True,samesite='Lax',path='/')
+        response=web.HTTPFound('/dashboard')
+        response.set_cookie('vivi_session',sid,max_age=3600,httponly=True,samesite='Lax',path='/',secure=self.secure_cookies)
         response.del_cookie('vivi_oauth',path='/callback')
         return response
 
@@ -187,7 +191,7 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
         if feature not in FEATURES or value not in {'true','false'}: raise web.HTTPBadRequest(text='Invalid feature setting.')
         self.service.store.set_option(guild,'feature:'+feature,value=='true')
         if feature=='invite_tracking':self.service.invites.cache.pop(guild,None)
-        raise web.HTTPSeeOther('/?guild='+str(guild))
+        raise web.HTTPSeeOther('/dashboard?guild='+str(guild))
 
     async def logout(self,request):
         session=self.session(request); data=await request.post()
@@ -269,7 +273,7 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
         self.service.store.actor.set('dashboard:'+str(session.get('user_id','admin')))
         return data,session,gid,self.service.bot.get_guild(gid)
 
-    def done(self,guild): raise web.HTTPSeeOther('/?guild='+str(guild))
+    def done(self,guild): raise web.HTTPSeeOther('/dashboard?guild='+str(guild))
 
     async def setting(self,request):
         data,session,gid,guild=await self.form(request)
@@ -378,7 +382,6 @@ class Dashboard(StudioDashboard,AdvancedDashboard,DashboardTools):
         return self.page('<h2>Verification results</h2>'+''.join('<p><b>'+html.escape(c['name'])+'</b>: '+html.escape(c['status'])+' — '+html.escape(c['detail'])+'</p>' for c in checks)+f'<a href="/?guild={gid}">Back</a>')
 
     async def start(self):
-        if not self.client or not self.secret: raise ValueError('Missing OAuth credentials')
         self.runner=web.AppRunner(self.app,access_log=None)
         await self.runner.setup()
         await web.TCPSite(self.runner,self.bind_host,self.port).start()

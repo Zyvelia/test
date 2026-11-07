@@ -66,7 +66,7 @@ class StudioDashboard:
         try: blocks=validate_announcement(json.loads(str(data.get('document',''))))
         except (ValueError,TypeError) as error: raise web.HTTPBadRequest(text=str(error))
         action=data.get('action')
-        if action=='preview': return self.page('<h2>Announcement preview</h2>'+''.join('<p>'+html.escape(b.get('name',''))+' '+html.escape(b.get('value','──────────'))+'</p>' for b in blocks)+f'<a href="/?guild={gid}">Back</a>')
+        if action=='preview': return self.page('<h2>Announcement preview</h2>'+''.join('<p>'+html.escape(b.get('name',''))+' '+html.escape(b.get('value','──────────'))+'</p>' for b in blocks)+f'<a href="/dashboard?guild={gid}">Back</a>')
         if action=='publish':
             if data.get('confirm')!='yes': raise web.HTTPBadRequest(text='Confirm publication before publishing.')
             try: channel=self.service.bot.get_guild(gid).get_channel(int(data.get('channel',0)))
@@ -82,9 +82,9 @@ class StudioDashboard:
     async def accessibility_audit(self,request):
         data,session,gid,guild=await self.form(request)
         response=self.page(self.settings_forms(gid,session)); issues=audit_html(response.text)
-        return self.page('<h2>Static accessibility findings</h2><p>Automated checks cannot confirm screen-reader compatibility. Test keyboard navigation, focus, contrast and spoken announcements manually.</p><ul>'+''.join('<li>'+html.escape(x)+'</li>' for x in issues)+('</ul><p>No static issues found.</p>' if not issues else '</ul>')+f'<p><a href="/?guild={gid}">Back</a></p>')
+        return self.page('<h2>Static accessibility findings</h2><p>Automated checks cannot confirm screen-reader compatibility. Test keyboard navigation, focus, contrast and spoken announcements manually.</p><ul>'+''.join('<li>'+html.escape(x)+'</li>' for x in issues)+('</ul><p>No static issues found.</p>' if not issues else '</ul>')+f'<p><a href="/dashboard?guild={gid}">Back</a></p>')
     async def release_check(self,request):
         data,session,gid,guild=await self.form(request)
         try: result=await check_updates(self.service)
         except Exception: raise web.HTTPBadGateway(text='Release service unavailable; check network access and host configuration.')
-        return self.page('<p>'+html.escape(result)+f'</p><a href="/?guild={gid}">Back</a>')
+        return self.page('<p>'+html.escape(result)+f'</p><a href="/dashboard?guild={gid}">Back</a>')

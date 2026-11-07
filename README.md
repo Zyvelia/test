@@ -230,3 +230,13 @@ Linux setup, local audio decoding and dashboard HTTP behavior are tested here;
 actual service activation depends on your host’s systemd user session. No bot token is included.
 
 More planning ideas: [250 additional feature ideas](docs/IDEAS-250.md) (wishlist only).
+
+## Vivi website
+
+Enable `DASHBOARD_ENABLED=true`, start Vivi, then open **http://127.0.0.1:8765**.
+The site includes invite buttons, features, command search and a connected server
+dashboard at `/dashboard`. It uses the short-haired avatar (option 3). No domain
+is needed locally. Discord dashboard login needs OAuth credentials configured
+on your computer. See [website setup and future hosting](docs/WEBSITE.md).
+
+![Vivi website](docs/assets/website-desktop.png)

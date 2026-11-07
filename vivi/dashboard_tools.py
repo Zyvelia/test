@@ -26,7 +26,7 @@ class DashboardTools:
         rows+='</details><details><summary>Custom command aliases</summary><p>Safe informational shortcuts; no moderation actions or raw code.</p>'
         for name,value in store.option(gid,'aliases',{}).items():
             rows+='<form action="/aliases" method="post">'+hidden+f'<input name="name" type="hidden" value="{html.escape(name)}">/{html.escape(name)} → {html.escape(value["target"])} {html.escape(value["argument"])} <button name="action" value="remove">Remove</button></form>'
-        rows+='<form action="/aliases" method="post">'+hidden+'<input name="name" maxlength="20" placeholder="New command name" required>'+self.select('target',[(x,x) for x in ALIAS_TARGETS])+'<input name="argument" maxlength="100" placeholder="Fixed FAQ/search argument (optional)"><button name="action" value="add">Add alias</button></form></details>'
+        rows+='<form action="/aliases" method="post">'+hidden+'<input name="name" maxlength="20" placeholder="New command name" required>'+self.select('target',[(x,x) for x in ALIAS_TARGETS])+'<input name="argument" maxlength="100" placeholder="Fixed command-search argument (optional)"><button name="action" value="add">Add alias</button></form></details>'
         rows+=f'<details><summary>Health dashboard</summary><p><a href="/health?guild={gid}">Open live health dashboard</a></p></details>'
         return rows
 
@@ -101,7 +101,10 @@ class DashboardTools:
         data,session,gid,guild=await self.form(request);values=self.service.store.option(gid,'aliases',{})
         name=str(data.get('name',''))
         if data.get('action')=='remove': values.pop(name,None)
-        elif data.get('action')=='add': values[name]=dict(target=str(data.get('target','')),argument=str(data.get('argument','')))
+        elif data.get('action')=='add':
+            target=str(data.get('target',''))
+            if target not in ALIAS_TARGETS:raise web.HTTPBadRequest(text='Choose an active shortcut target. FAQ commands were removed.')
+            values[name]=dict(target=target,argument=str(data.get('argument','')))
         else: raise web.HTTPBadRequest(text='Invalid alias action.')
         try: validate_aliases(values)
         except ValueError as error: raise web.HTTPBadRequest(text=str(error))

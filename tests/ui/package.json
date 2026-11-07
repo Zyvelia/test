@@ -1,1 +1,12 @@
-{"name":"vivi-dashboard-tests","private":true,"scripts":{"test":"node studio.test.cjs"},"devDependencies":{"jsdom":"26.1.0"}}
+{
+  "name": "vivi-dashboard-tests",
+  "private": true,
+  "scripts": {
+    "test": "node studio.test.cjs",
+    "test:website": "node website.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0",
+    "playwright": "1.57.0"
+  }
+}
