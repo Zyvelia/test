@@ -129,3 +129,14 @@ class ArcadeInteractions(unittest.IsolatedAsyncioTestCase):
   self.i.response.edit_message.call_args.kwargs['attachments'][0].close()
  async def test_finished_game_card_clears_interactive_view(self):
   g=self.active('tictactoe');g['engine'].done=True;g['engine'].result='Draw!';await self.hub.update(g);self.assertIsNone(g['message'].edit.call_args.kwargs['view']);g['message'].edit.call_args.kwargs['attachments'][0].close()
+
+ async def test_move_acknowledgment_expires_without_removing_the_public_board(self):
+  g=self.active('tictactoe');message=NS(delete=AsyncMock());self.i.response.is_done=lambda:True;self.i.followup.send.return_value=message
+  await self.hub.move(self.i,'A3')
+  self.assertEqual(self.i.followup.send.call_args.args[0],'Move recorded.');self.assertTrue(self.i.followup.send.call_args.kwargs['ephemeral']);self.assertTrue(self.i.followup.send.call_args.kwargs['wait']);message.delete.assert_awaited_once_with(delay=3)
+  self.assertIn(g['key'],self.hub.sessions);self.assertIsNotNone(g['message'])
+
+ async def test_temporary_initial_response_uses_discord_background_deletion(self):
+  from vivi.bot import reply
+  await reply(self.i,'Move recorded.',delete_after=3)
+  self.assertEqual(self.i.response.send_message.call_args.kwargs['delete_after'],3);self.assertTrue(self.i.response.send_message.call_args.kwargs['ephemeral'])

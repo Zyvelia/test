@@ -105,3 +105,5 @@ text fallbacks, stale sessions and existing tic-tac-toe rewards. The existing fu
 suite and dashboard DOM tests remain applicable. Docker smoke tests render cards
 without network access or a Discord token. Actual Discord appearance and accessibility
 still need a live check with your chosen client and server configuration.
+
+Successful public-board moves show a private **Move recorded.** acknowledgment that deletes itself after three seconds. This does not delete the game board, hidden boards, card hands or interactive menus. The timer runs in the background so players can continue without waiting or dismissing the acknowledgment manually.

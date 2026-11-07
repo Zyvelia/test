@@ -263,7 +263,7 @@ class GameHub:
         if g['kind'] in {'battleship',*CARD_TYPES} and not g.get('text_only'):
             try:await i.followup.send(ephemeral=True,allowed_mentions=discord.AllowedMentions.none(),**await self.card(g,i.user.id))
             except discord.HTTPException:await reply(i,self.private(g,i.user.id))
-        else:await reply(i,self.private(g,i.user.id) if g['kind'] in {'battleship',*CARD_TYPES} else 'Move recorded.')
+        else:await reply(i,self.private(g,i.user.id) if g['kind'] in {'battleship',*CARD_TYPES} else 'Move recorded.',delete_after=None if g['kind'] in {'battleship',*CARD_TYPES} else 3)
         if engine.done:
             if self.sessions.get(key) is g:self.sessions.pop(key,None)
         elif isinstance(engine,Memory) and len(engine.shown)==2: g['hide_at']=time.time()+2

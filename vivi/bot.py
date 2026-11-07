@@ -22,13 +22,17 @@ class StartupConfigurationError(RuntimeError):
     """An actionable setup failure that should not trigger automatic crash retries."""
 
 
-async def reply(interaction, text):
+async def reply(interaction, text, *, delete_after=None):
     from vivi.core.i18n import interaction_language,localize_message
     text = localize_message(interaction_language(interaction),str(text))[:1950]
     if interaction.response.is_done():
-        await interaction.followup.send(text, ephemeral=True)
+        if delete_after is None:await interaction.followup.send(text, ephemeral=True)
+        else:
+            message=await interaction.followup.send(text, ephemeral=True,wait=True)
+            await message.delete(delay=delete_after)
     else:
-        await interaction.response.send_message(text, ephemeral=True)
+        if delete_after is None:await interaction.response.send_message(text, ephemeral=True)
+        else:await interaction.response.send_message(text, ephemeral=True,delete_after=delete_after)
 
 
 async def audit(bot, guild, text, **kwargs):
