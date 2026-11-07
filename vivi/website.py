@@ -1,4 +1,5 @@
 """Vivi's public site and the shared, authenticated dashboard shell."""
+from contextvars import ContextVar
 import html
 import json
 import os
@@ -8,6 +9,8 @@ from urllib.parse import urlencode
 from aiohttp import web
 from discord import app_commands
 from . import __version__
+
+WEB_SESSION=ContextVar('website_session',default=None)
 
 ROOT=Path(__file__).resolve().parents[1]
 WEB=Path(__file__).parent/'web'
@@ -61,8 +64,17 @@ class Website:
         branding=branding or {};name=branding.get('name','Vivi') if dashboard else 'Vivi'
         links=''.join(f'<a href="/{path}"'+(' aria-current="page"' if active==path else '')+f'>{label}</a>' for path,label in [('features','Features'),('commands','Commands'),('support','Support')])
         brand=f'<a class="brand" href="/" aria-label="Vivi home"><svg viewBox="0 0 30 38" fill="none" aria-hidden="true"><path d="M3 3 15 34 27 3M10 3l5 14 5-14" stroke="currentColor" stroke-width="3.4" stroke-linejoin="round"/></svg>{esc(name)}<span class="brand-dot">.</span></a>'
-        header=f'<a class="skip-link" href="#main-content">Skip to content</a><header class="site-header"><div class="container nav-wrap">{brand}<nav class="nav-links" id="site-navigation" aria-label="Main navigation">{links}<a href="/dashboard">Dashboard</a></nav><div class="nav-actions"><a class="nav-login" href="/login">Sign in with Discord</a><a class="btn btn-primary" href="/invite">Add to Discord {icon("arrow")}</a><button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="site-navigation" aria-label="Open navigation">☰</button></div></div></header>'
-        footer=f'<footer class="site-footer"><div class="container"><div class="footer-top"><div>{brand}<p class="footer-tagline">A little structure. A lot of personality.</p></div><nav class="footer-links" aria-label="Footer"><a href="/commands">Commands</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="{GITHUB}">GitHub</a></nav></div><div class="footer-bottom"><span>Vivi · Community tools, made personal. Not affiliated with Discord.</span><span class="small-status"><i class="status-dot" data-site-dot></i><span data-site-status>Checking bot connection…</span></span></div></div></footer>'
+        session=WEB_SESSION.get()
+        account='<a class="nav-login" href="/login">Sign in with Discord</a>'
+        if session:
+            profile=session.get('profile',{});display=profile.get('global_name') or profile.get('username') or 'Discord member'
+            uid=str(session.get('user_id',''));avatar=profile.get('avatar','')
+            picture=f'<span class="account-avatar">{esc(display[:1].upper())}</span>'
+            if re.fullmatch(r'[0-9]{1,20}',uid) and re.fullmatch(r'(?:a_)?[a-f0-9]{32}',avatar):
+                picture=f'<img class="account-avatar" src="https://cdn.discordapp.com/avatars/{uid}/{avatar}.png?size=64" alt="">'
+            account=f'<details class="account-menu"><summary>{picture}<span>{esc(display)}</span></summary><div class="account-popover"><strong>Signed in with Discord</strong><a href="/dashboard">Your servers</a><form action="/logout" method="post"><input type="hidden" name="csrf" value="{esc(session["csrf"])}"><button>Sign out</button></form></div></details>'
+        header=f'<a class="skip-link" href="#main-content">Skip to content</a><header class="site-header"><div class="container nav-wrap">{brand}<nav class="nav-links" id="site-navigation" aria-label="Main navigation">{links}<a href="/dashboard">Dashboard</a></nav><div class="nav-actions">{account}<a class="btn btn-primary" href="/invite">Add to Discord {icon("arrow")}</a><button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="site-navigation" aria-label="Open navigation">☰</button></div></div></header>'
+        footer=f'<footer class="site-footer"><div class="container"><div class="footer-top"><div>{brand}<p class="footer-tagline">A little structure. A lot of personality.</p></div><nav class="footer-links" aria-label="Footer"><a href="/commands">Commands</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="{GITHUB}">GitHub</a></nav></div><div class="footer-bottom"><span>Vivi · Community tools, made personal. Not affiliated with Discord.</span><span class="small-status"><i class="status-dot" data-site-dot></i><span data-site-status>Checking Vivi’s bot connection…</span></span></div></div></footer>'
         if dashboard:
             content='<div class="container dashboard-layout"><aside class="dashboard-rail"><div class="rail-label">Your workspace</div><a href="/dashboard">Your servers</a><a href="/commands">Command directory</a><a href="/support">Help & setup</a><div class="rail-label">Server modules</div><nav data-dashboard-sections aria-label="Server modules"></nav></aside><div class="dashboard-content"><div id="studio-status" role="status" aria-live="polite"></div><h1>'+esc(name)+' · Server Dashboard</h1><p>'+esc(branding.get('tagline','Your server, your settings.'))+'</p>'+content+'</div></div>'
         scripts='<script src="/assets/site.js" defer></script>'+('<script src="/assets/studio.js" defer></script>' if dashboard else '')

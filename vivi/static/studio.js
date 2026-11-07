@@ -60,7 +60,7 @@
     const search=document.getElementById('palette-search'),results=document.getElementById('palette-results');
     const entries=[];const navigation=document.getElementById('section-links');
     [...panels.querySelectorAll(':scope > details[data-panel]')].forEach(section=>{
-      const title=section.querySelector('summary').childNodes[0].textContent.trim();section.id='panel-'+section.dataset.panel;
+      const title=section.querySelector('summary').childNodes[0].textContent.trim();if(!section.id)section.id='panel-'+section.dataset.panel;
       const link=document.createElement('a');link.href='#'+section.id;link.textContent=title;
       link.addEventListener('click',()=>{section.open=true;const menu=document.getElementById('mobile-navigation');if(menu)menu.open=false;});navigation.append(link);
       entries.push({label:title,target:section,section});

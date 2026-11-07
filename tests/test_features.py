@@ -391,4 +391,23 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         dashboard.api_guilds.return_value={}
         with self.assertRaises(web.HTTPForbidden): await dashboard.feature(post)
 
+    async def test_dashboard_settings_sync_with_discord_commands_and_recheck_permissions(self):
+        dashboard=Dashboard(self.service)
+        self.bot.get_guild=lambda gid:self.guild if gid==1 else None
+        dashboard.sessions['sid']={'token':'opaque','csrf':'good','expires':time.time()+100}
+        dashboard.api_guilds=AsyncMock(return_value={'1':{'id':'1','permissions':'8'}})
+        request=make_mocked_request('GET','/api/dashboard-state?guild=1',headers={'Cookie':'vivi_session=sid'})
+        initial=json.loads((await dashboard.dashboard_state(request)).text)['revision']
+        await self.command('admin','setting')(self.i(),'welcome_text','Hello from Discord')
+        changed=json.loads((await dashboard.dashboard_state(request)).text)['revision']
+        self.assertNotEqual(initial,changed)
+        self.assertEqual(changed,json.loads((await dashboard.dashboard_state(request)).text)['revision'])
+        post=NS(cookies={'vivi_session':'sid'},post=AsyncMock(return_value={'csrf':'good','guild':'1','name':'welcome_text','value':'Hello from the dashboard'}))
+        with self.assertRaises(web.HTTPSeeOther):await dashboard.setting(post)
+        self.assertEqual(self.store.option(1,'welcome_text'),'Hello from the dashboard')
+        self.assertNotEqual(changed,json.loads((await dashboard.dashboard_state(request)).text)['revision'])
+        self.assertNotIn('Hello from the dashboard',(await dashboard.dashboard_state(request)).text)
+        dashboard.api_guilds.return_value={}
+        with self.assertRaises(web.HTTPForbidden):await dashboard.dashboard_state(request)
+
 if __name__=='__main__': unittest.main()

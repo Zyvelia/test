@@ -24,7 +24,7 @@ from .i18n import UI_LANGUAGE,localize_html,tr
 
 from .studio import StudioDashboard
 
-from .website import Website,esc
+from .website import Website,esc,WEB_SESSION
 from .webconfig import dashboard_endpoint
 
 class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
@@ -36,7 +36,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         for key,value in dashboard_endpoint(self.redirect).items():setattr(self,key,value)
         self.website_application_id()
         self.app=web.Application(client_max_size=262144,middlewares=[self.security])
-        self.app.add_routes([web.get('/',self.site_home),web.get('/dashboard',self.index),web.get('/login',self.login),web.get('/callback',self.callback),
+        self.app.add_routes([web.get('/',self.site_home),web.get('/dashboard',self.index),web.get('/api/dashboard-state',self.dashboard_state),web.get('/login',self.login),web.get('/callback',self.callback),
                              web.post('/feature',self.feature),web.post('/logout',self.logout),
                              web.post('/setting',self.setting),web.post('/setup',self.setup),
                              web.post('/faq',self.faq),web.post('/ticket-category',self.ticket_category),
@@ -60,6 +60,9 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
             origin=f'{self.scheme}://{self.host}'+(f':{port}' if port!=(443 if self.scheme=='https' else 80) else '')
             if request.headers['Origin']!=origin:
                 error=web.HTTPForbidden(text='Unexpected request origin.');self.headers(error);raise error
+        active=self.sessions.get(request.cookies.get('vivi_session',''))
+        if active and active.get('expires',0)<time.time():active=None
+        session_token=WEB_SESSION.set(active)
         locale_token=UI_LANGUAGE.set('en')
         brand_token=UI_BRAND.set({})
         actor_token=self.service.store.actor.set('dashboard')
@@ -69,6 +72,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
                 self.headers(response);raise
             self.headers(response);return response
         finally:
+            WEB_SESSION.reset(session_token)
             UI_LANGUAGE.reset(locale_token)
             UI_BRAND.reset(brand_token)
             self.service.store.actor.reset(actor_token)
@@ -78,7 +82,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         response.headers.setdefault('Cache-Control','no-store')
         response.headers.update({'X-Content-Type-Options':'nosniff',
             'Referrer-Policy':'same-origin','X-Frame-Options':'DENY',
-            'Content-Security-Policy':"default-src 'none'; script-src 'self'; img-src 'self' blob:; font-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
+            'Content-Security-Policy':"default-src 'none'; script-src 'self'; img-src 'self' blob: https://cdn.discordapp.com; font-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"})
 
     def session(self,request):
         sid=request.cookies.get('vivi_session',''); session=self.sessions.get(sid)
@@ -113,6 +117,16 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         css=f"body{{background:{palette['background']};color:{palette['text']}}}:root{{--bg:{palette['background']};--surface:{palette['panel']};--text:{palette['text']};--pink:{palette['accent']}}}"
         return self.site_shell(content,'Server dashboard','dashboard',True,branding,css)
 
+    def config_revision(self,gid):
+        payload=json.dumps(self.service.store.export_config(gid),sort_keys=True,separators=(',',':'))
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    async def dashboard_state(self,request):
+        try:gid=int(request.query.get('guild',''))
+        except ValueError:raise web.HTTPBadRequest(text='Invalid server.')
+        await self.authorize(request,gid)
+        return web.json_response({'revision':self.config_revision(gid)})
+
     async def index(self,request):
         if not request.cookies.get('vivi_session'):return self.site_shell('<div class="container"><section class="error-card"><div class="eyebrow" style="justify-content:center">Your server workspace</div><h1>Make yourself at home.</h1><p>Sign in with Discord to manage servers you own or administer. Vivi checks your current permissions before applying changes.</p><a class="btn btn-primary" href="/login">Sign in with Discord</a></section></div>','Your dashboard','dashboard')
         session=self.session(request)
@@ -134,15 +148,15 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         forms=[]
         for feature in FEATURES:
             on=enabled(self.service.store,guild,feature)
-            forms.append(f'<form action="/feature" method="post"><input type="hidden" name="csrf" value="{session["csrf"]}">'
+            forms.append(f'<form class="module-card" action="/feature" method="post"><input type="hidden" name="csrf" value="{session["csrf"]}">'
                          f'<input type="hidden" name="guild" value="{guild}"><input type="hidden" name="feature" value="{feature}">'
-                         f'<input type="hidden" name="enabled" value="{str(not on).lower()}"><b>{feature}</b>: {"ON" if on else "OFF"} '
-                         f'<button>{"Disable" if on else "Enable"}</button></form>')
-        return self.page(self.personalize(f'<h2>{name}</h2><p><a href="/dashboard">All servers</a></p><p>Manage Vivi for this server. Optional AI, voice and notification providers need local host configuration.</p><details><summary>Feature switches</summary>'+''.join(forms)+'</details>'+self.settings_forms(guild,session)+self.logout_form(session),guild,session))
+                         f'<input type="hidden" name="enabled" value="{str(not on).lower()}"><b>{feature.replace("_"," ")}</b>: {"ON" if on else "OFF"} '
+                         f'<button role="switch" aria-checked="{str(on).lower()}" aria-label="Toggle {feature.replace("_"," ")}">{"Disable" if on else "Enable"}</button><a class="module-configure" href="#module-settings" data-module-configure="{feature}">Customize →</a></form>')
+        return self.page(self.personalize(f'<h2>{name}</h2><p><a href="/dashboard">All servers</a></p><p>Manage Vivi for this server. Optional AI, voice and notification providers need local host configuration.</p><div data-dashboard-sync data-guild="{guild}" data-revision="{self.config_revision(guild)}"><p class="sync-status" role="status">Settings shared with Discord · checking for updates automatically.</p></div><details open><summary>Feature switches</summary><div class="module-grid">'+''.join(forms)+'</div></details>'+self.settings_forms(guild,session)+self.logout_form(session),guild,session))
 
     @staticmethod
     def logout_form(session):
-        return f'<form action="/logout" method="post"><input type="hidden" name="csrf" value="{session["csrf"]}"><button>Sign out</button></form>'
+        return ''  # Account actions live in the shared header.
 
     async def login(self,request):
         if not self.client or not self.secret:
@@ -175,6 +189,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
             if who.status!=200: raise web.HTTPUnauthorized(text='Discord identity check failed.')
             identity=await who.json()
         self.sessions[sid]={'user_id':int(identity['id']),'token':data['access_token'],'csrf':secrets.token_urlsafe(32),
+                            'profile':{key:identity.get(key) or '' for key in ('username','global_name','avatar')},
                             'expires':time.time()+min(int(data.get('expires_in',3600)),3600)}
         response=web.HTTPFound('/dashboard')
         response.set_cookie('vivi_session',sid,max_age=3600,httponly=True,samesite='Lax',path='/',secure=self.secure_cookies)
@@ -219,7 +234,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         for key,options in [('welcome',texts),('category',categories),('staff',roles),('logs',texts)]:
             setup+=f'<label>{key}'+self.select(key,options,configuration[key] if configuration else 0)+'</label>'
         setup+='<button>Save server setup</button></form></details>'
-        fields='<details><summary>Welcome, moderation, AI channels and other settings</summary>'
+        fields='<details id="module-settings"><summary>Customize feature settings</summary><p>Changes save to the same settings used by Discord commands. Choose Save setting to apply each change.</p>'
         channel_keys={'goodbye_channel':texts,'birthday_channel':texts,'daily_channel':texts,'raid_channel':texts,
                       'voice_category':categories,'voice_lobby':voices,'autorole':roles,'rules_role':roles,'reviewer_role':roles,'review_channel':texts,'lfg_channel':texts}
         for key,typ in OPTION_TYPES.items():
@@ -228,7 +243,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
             if key=='welcome_text': default=tr(store.option(gid,'language','en'),'Welcome {member} to {server}!')+' '+tr(store.option(gid,'language','en'),'Please read the rules and choose your roles.')
             if key=='goodbye_text': default=tr(store.option(gid,'language','en'),'Goodbye {member}.')
             value=store.option(gid,key,default)
-            fields+='<form action="/setting" method="post">'+hidden+f'<input type="hidden" name="name" value="{key}"><label>{key.replace("_"," ")}</label>'
+            fields+=f'<form data-setting="{key}" action="/setting" method="post">'+hidden+f'<input type="hidden" name="name" value="{key}"><label>{key.replace("_"," ")}</label>'
             if key=='ai_channels':
                 control='<select name="values" multiple size="5">'+''.join(f'<option value="{ident}"'+(' selected' if ident in value else '')+f'>{html.escape(label)}</option>' for ident,label in texts if ident)+'</select><small>Hold Ctrl to choose several AI channels; clear selections to allow none.</small>'
             elif key in channel_keys: control=self.select('value',channel_keys[key],value)

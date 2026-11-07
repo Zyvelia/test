@@ -92,3 +92,19 @@ Browser checks run with `npm ci --prefix tests/ui`,
 If the page does not open, check the enabled flag, startup logs and port availability.
 If login returns a setup message, configure OAuth credentials. If Discord rejects
 login, match the redirect exactly, including the hostname, port and `/callback`.
+
+## Account and settings synchronization
+
+After login, the website header shows your Discord display name and avatar (or an
+initial when no avatar is set). Open that menu for Your servers or Sign out. The
+sign-in link is hidden on public and dashboard pages while your session is valid.
+The footer's “Vivi bot online/offline” describes the bot connection, not your login.
+
+On a server dashboard, use feature switches to enable modules and **Customize** to
+open related controls. Welcome text and colors, moderation limits, AI channels,
+voice settings, XP overrides, notifications and other supported settings save to
+the same server database used by Discord commands. Provider credentials remain
+host configuration. Save each setting to apply it; unsaved typing is not sent.
+Open dashboards check the saved configuration every 30 seconds and when you return
+to the tab. A changed configuration reloads automatically when no form has edits.
+When you have unsaved edits, a notice offers to reload rather than discarding them.

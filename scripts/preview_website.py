@@ -30,7 +30,7 @@ async def main(port,dashboard_preview=False):
                 guild=NS(id=1,name='Velvet Ruins',text_channels=[],channels=[],categories=[],voice_channels=[],roles=[],me=NS(display_name='Preview bot'),get_member=lambda uid:None,get_channel=lambda cid:None)
                 bot.get_guild=lambda gid:guild if gid==1 else None
                 dashboard.api_guilds=AsyncMock(return_value={'1':dict(id='1',name='Velvet Ruins',permissions='8'),'2':dict(id='2',name='Your next community',permissions='8')})
-                dashboard.sessions['vivi-preview']=dict(user_id=7,token='not-a-real-token',csrf='preview-only-csrf',expires=time.time()+3600)
+                dashboard.sessions['vivi-preview']=dict(profile={'username':'ItsZyVelia','global_name':'ZyVelia','avatar':''},user_id=7,token='not-a-real-token',csrf='preview-only-csrf',expires=time.time()+3600)
             dashboard.runner=web.AppRunner(dashboard.app,access_log=None);await dashboard.runner.setup()
             site=web.TCPSite(dashboard.runner,'127.0.0.1',port);await site.start()
             dashboard.port=site._server.sockets[0].getsockname()[1];dashboard.public_port=dashboard.port
