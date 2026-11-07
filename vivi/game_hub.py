@@ -10,13 +10,17 @@ from .features import enabled
 from .game_engines import ConnectFour, Checkers, Chess, Hangman, Sudoku, Memory, Battleship, TicTacToe, WORD_BANK
 
 from .more_games import Reversi,SAVED_TYPES
+from .card_games import Blackjack,GoFish
+from .network_puzzles import NETWORK_TYPES,DIFFICULTIES,SIZES
+SAVED_TYPES={**SAVED_TYPES,**NETWORK_TYPES}
+CARD_TYPES={"blackjack":Blackjack,"go_fish":GoFish}
 from .game_design import THEMES,presentation,payload
 
 class MoveModal(discord.ui.Modal,title='Your move'):
     value=discord.ui.TextInput(label='Move or guess',max_length=80)
     def __init__(self,hub,key):
         super().__init__(); self.hub=hub; self.key=key; self.game=hub.sessions.get(key)
-        examples={'chess':'e2e4 or Nf3','checkers':'b6-d4-f2','sudoku':'A1=5','crossword':'1A=CAT','minesweeper':'A1 or flag A1','word_search':'A1-E1','battleship':'A1','anagram':'Your unscrambled word','hangman':'A letter or the whole word'}
+        examples={'chess':'e2e4 or Nf3','checkers':'b6-d4-f2','sudoku':'A1=5','crossword':'1A=CAT','minesweeper':'A1 or flag A1','word_search':'A1-E1','battleship':'A1','anagram':'Your unscrambled word','hangman':'A letter or the whole word','blackjack':'hit or stand','go_fish':'A, 2–10, J, Q or K','pipe_connector':'A1 or A1 2','circuit_repair':'A1 or A1 3','laser_locks':'A1'}
         if self.game:self.value.placeholder=examples.get(self.game['kind'],'A coordinate or your answer')
     async def on_submit(self,i):
         if self.hub.sessions.get(self.key) is not self.game or i.guild_id!=self.key[0]: return await reply(i,'This game has ended. Use your current game’s controls.')
@@ -36,8 +40,9 @@ class CoordinateView(discord.ui.View):
                         if item.row==0:item.style=discord.ButtonStyle.primary if item.label.lower()==value else discord.ButtonStyle.secondary
                     await i.response.edit_message(content='Mode: '+value+'. Choose a square in this row.',view=self)
                 button.callback=choose_mode;self.add_item(button)
-        for col in range(6):
-            coordinate=f'{chr(65+col)}{row}';button=discord.ui.Button(label=coordinate,row=1+col//3)
+        width=getattr(self.game['engine'],'size',6) if self.game['kind'] in NETWORK_TYPES else 6
+        for col in range(width):
+            coordinate=f'{chr(65+col)}{row}';button=discord.ui.Button(label=coordinate,row=1+col//5)
             async def choose_square(i,value=coordinate):
                 if not await self.allowed(i):return
                 move=(self.mode+' ' if self.game['kind']=='minesweeper' else '')+value
@@ -53,9 +58,10 @@ class GameView(discord.ui.View):
         super().__init__(timeout=None); self.hub=hub; self.key=key; self.game=hub.sessions.get(key)
         for label in (['Accept','Decline'] if invite else ['Enter move','Private board','Resign']):
             button=discord.ui.Button(label=label,style=discord.ButtonStyle.success if label=='Accept' else discord.ButtonStyle.danger if label in {'Decline','Resign'} else discord.ButtonStyle.primary if label=='Enter move' else discord.ButtonStyle.secondary)
+            if label=='Private board' and self.game and self.game['kind'] in CARD_TYPES:button.label='Private hand'
             async def callback(i,action=label):
                 game=hub.sessions.get(key)
-                if not game or game is not self.game or i.user.id not in game['players']: return await reply(i,'This is not your active game.')
+                if not game or game is not self.game or i.guild_id!=key[0] or i.user.id not in game['players']: return await reply(i,'This is not your active game.')
                 if not enabled(hub.store,i.guild_id,'games'): return await reply(i,'Games are disabled here.')
                 if action in {'Accept','Decline'}:
                     if i.user.id!=game['players'][1]: return await reply(i,'Only the challenged member can respond.')
@@ -69,6 +75,13 @@ class GameView(discord.ui.View):
                 await hub.resign(i)
             button.callback=callback; self.add_item(button)
         game=hub.sessions.get(key)
+        if game and not invite and game['kind']=='blackjack':
+            for action in ['Hit','Stand']:
+                button=discord.ui.Button(label=action,row=1,style=discord.ButtonStyle.primary)
+                async def play_card(i,value=action.lower()):
+                    if hub.sessions.get(key) is not self.game or i.guild_id!=key[0] or i.user.id not in self.game['players']:return await reply(i,'This hand has ended.')
+                    await hub.move(i,value)
+                button.callback=play_card;self.add_item(button)
         if game and not invite and game['kind'] in {'memory','connect_four','tictactoe'}:
             moves=[str(n) for n in range(1,8)] if game['kind']=='connect_four' else [f'{chr(65+c)}{3-r}' for r in range(3) for c in range(3)] if game['kind']=='tictactoe' else [f'{chr(65+c)}{4-r}' for r in range(4) for c in range(4)]
             for n,move in enumerate(moves):
@@ -83,11 +96,12 @@ class GameView(discord.ui.View):
                     if not found or found[0]!=key or found[1] is not self.game: return await reply(i,'This is not your active game.')
                     await hub.move(i,value)
                 button.callback=choose; self.add_item(button)
-        if game and not invite and game['kind'] in {'minesweeper','battleship'}:
-            menu=discord.ui.Select(placeholder='Quick move: choose a row',row=1,options=[discord.SelectOption(label=f'Row {n}',value=str(n)) for n in range(6,0,-1)])
+        if game and not invite and game['kind'] in {'minesweeper','battleship',*NETWORK_TYPES}:
+            width=game['engine'].size if game['kind'] in NETWORK_TYPES else 6
+            menu=discord.ui.Select(placeholder='Quick move: choose a row',row=1,options=[discord.SelectOption(label=f'Row {n}',value=str(n)) for n in range(width,0,-1)])
             async def choose_row(i):
                 current=hub.sessions.get(key)
-                if current is not self.game or i.user.id not in current['players']:return await reply(i,'This is not your active game.')
+                if current is not self.game or i.guild_id!=key[0] or i.user.id not in current['players']:return await reply(i,'This is not your active game.')
                 row=int(i.data['values'][0]);view=CoordinateView(hub,key,i.user.id,row)
                 await i.response.send_message('Choose a column. These private controls last two minutes.',view=view,ephemeral=True)
             menu.callback=choose_row;self.add_item(menu)
@@ -141,21 +155,26 @@ class GameHub:
         engine=g['engine']; board=engine.last if g['kind']=='battleship' else engine.board()
         if not g.get('accepted',True):return f'<@{g["players"][1]}>, accept or decline this {g["kind"]} challenge within two minutes.\n'+engine.help
         return f'**{g["kind"].title()}** · '+(' vs '.join(f'<@{u}>' for u in g['players']))+'\n'+board+'\n'+(engine.result if engine.done else f'Turn: <@{g["players"][engine.turn]}>')+'\n'+engine.help
-    async def start(self,i,kind,opponent=None,difficulty='easy',rounds=5):
+    async def start(self,i,kind,opponent=None,difficulty='easy',rounds=5,size='small'):
         if not await self.service.need(i,'games'): return
         if self.find(i.guild_id,i.user.id): return await reply(i,'Finish your active game with /games resign first.')
         if sum(key[0]==i.guild_id for key in self.sessions)>=50: return await reply(i,'Server game limit reached. Try later.')
+        if kind in CARD_TYPES and opponent and opponent.id==getattr(getattr(self.bot,'user',None),'id',None):opponent=None
         if opponent and (opponent.bot or opponent.id==i.user.id or self.find(i.guild_id,opponent.id)): return await reply(i,'Choose another available human member.')
         await i.response.defer()
         key=(i.guild_id,i.user.id)
         theme=self.store.profile(i.guild_id,i.user.id).get('game_theme','velvet')
         game=dict(theme=theme if theme in THEMES else 'velvet',ready=False,kind=kind,players=[i.user.id]+([opponent.id] if opponent else []),accepted=not opponent,expires=time.time()+(120 if opponent else 1800))
+        if kind in CARD_TYPES and not opponent:
+            game['vs_vivi']=True;game['players'].append(getattr(getattr(self.bot,'user',None),'id',None) or 1568121020047429775)
         if kind=='anagram': game.update(round=0,rounds=rounds,scores={i.user.id:0},words=random.sample(WORD_BANK,rounds),last='')
         else:
-            factories={'tictactoe':TicTacToe,'connect_four':ConnectFour,'checkers':Checkers,'chess':Chess,'hangman':Hangman,'sudoku':lambda:Sudoku(difficulty),'memory':Memory,'battleship':Battleship,'reversi':Reversi,**SAVED_TYPES}
+            factories={'tictactoe':TicTacToe,'connect_four':ConnectFour,'checkers':Checkers,'chess':Chess,'hangman':Hangman,'sudoku':lambda:Sudoku(difficulty),'memory':Memory,'battleship':Battleship,'reversi':Reversi,**SAVED_TYPES,**{name:(lambda factory=factory:factory(vs_vivi=not opponent)) for name,factory in CARD_TYPES.items()}}
             if kind=='minesweeper':factories[kind]=lambda:SAVED_TYPES[kind](difficulty)
+            if kind in NETWORK_TYPES:factories[kind]=lambda:NETWORK_TYPES[kind](difficulty,size)
             saved=self.store.record(f'puzzle:{i.guild_id}:{i.user.id}:{kind}') if kind in SAVED_TYPES else None
             game['engine']=SAVED_TYPES[kind].load(saved['data']['state']) if saved else await asyncio.to_thread(factories[kind])
+            if kind in NETWORK_TYPES:game['engine'].expire()
         game['key']=key
         # Recheck after off-thread Sudoku generation.
         if self.find(i.guild_id,i.user.id) or opponent and self.find(i.guild_id,opponent.id): return await reply(i,'A player started another game. Retry after it ends.')
@@ -173,6 +192,8 @@ class GameHub:
                 game['text_only']=True
                 game['message']=await i.followup.send(self.public(game),view=view,wait=True,allowed_mentions=discord.AllowedMentions.none())
             game['ready']=True
+            if game.get('engine') and game['engine'].done:
+                await self.update(game);self.sessions.pop(key,None);return
             if self.sessions.get(key) is not game:
                 game.setdefault('end_status','Game opening cancelled.');await self.finish(game)
         except Exception:
@@ -228,18 +249,35 @@ class GameHub:
         if g['players'][engine.turn]!=i.user.id: return await reply(i,'It is the other player’s turn.')
         try: engine.move(text.strip())
         except ValueError as error: return await reply(i,str(error))
+        if g.get('vs_vivi'):
+            for _ in range(104):
+                if engine.done or engine.turn!=1:break
+                engine.bot_move()
+            else:raise RuntimeError('Card AI exceeded its finite deck bound.')
+        if g['kind'] in CARD_TYPES and engine.done:self.settle_cards(g)
         g['expires']=time.time()+1800
         self.save_puzzle(g)
         if g['kind']=='tictactoe' and engine.done and engine.result!='Draw!':self.service.reward(i.guild_id,i.user.id,0,'Tic-tac-toe winner')
         await i.response.defer(ephemeral=True)
         await self.update(g)
-        if g['kind']=='battleship' and not g.get('text_only'):
+        if g['kind'] in {'battleship',*CARD_TYPES} and not g.get('text_only'):
             try:await i.followup.send(ephemeral=True,allowed_mentions=discord.AllowedMentions.none(),**await self.card(g,i.user.id))
             except discord.HTTPException:await reply(i,self.private(g,i.user.id))
-        else:await reply(i,self.private(g,i.user.id) if g['kind']=='battleship' else 'Move recorded.')
+        else:await reply(i,self.private(g,i.user.id) if g['kind'] in {'battleship',*CARD_TYPES} else 'Move recorded.')
         if engine.done:
             if self.sessions.get(key) is g:self.sessions.pop(key,None)
         elif isinstance(engine,Memory) and len(engine.shown)==2: g['hide_at']=time.time()+2
+    def settle_cards(self,g):
+        if g.get('settled'):return
+        g['settled']=True
+        for index,user in enumerate(g['players']):
+            if g.get('vs_vivi') and index==1:continue
+            profile=self.store.profile(g['key'][0],user)
+            stats=profile.setdefault('arcade_cards',{}).setdefault(g['kind'],{'played':0,'wins':0,'chips':0})
+            stats['played']+=1
+            if index in g['engine'].winners:stats['wins']+=1;stats['chips']+=10
+            self.store.save_profile(g['key'][0],user,profile)
+
     async def resign(self,i):
         found=self.find(i.guild_id,i.user.id)
         if not found: return await reply(i,'You have no active game.')
@@ -274,6 +312,8 @@ class GameHub:
         now=time.time()
         for key,g in list(self.sessions.items()):
             if self.sessions.get(key) is not g:continue
+            if g['kind'] in NETWORK_TYPES and g['engine'].expire(now):
+                self.save_puzzle(g);self.sessions.pop(key,None);await self.finish(g);continue
             if g['expires']<now or not enabled(self.store,key[0],'games'):
                 self.sessions.pop(key,None)
                 g['end_status']='Game ended: timeout or games disabled.'
@@ -302,6 +342,28 @@ class GameHub:
 
 def register_games(bot):
     group=bot.tree.get_command('games'); hub=bot.community.games
+    cards=app_commands.Group(name='cards',description='Private card games against Vivi or a member',guild_only=True)
+    puzzles=app_commands.Group(name='puzzles',description='Procedural rotation puzzles with saved progress',guild_only=True)
+    bot.tree.add_command(cards);bot.tree.add_command(puzzles)
+    @cards.command(name='blackjack',description='Practice blackjack against Vivi, or challenge a member. No real-money bets.')
+    async def blackjack(i:discord.Interaction,opponent:discord.Member=None):await hub.start(i,'blackjack',opponent)
+    @cards.command(name='go_fish',description='Collect books of four against Vivi, or challenge a member.')
+    async def go_fish(i:discord.Interaction,opponent:discord.Member=None):await hub.start(i,'go_fish',opponent)
+    @cards.command(name='profile',description='View your saved card-game wins and fictional practice chips privately.')
+    async def card_profile(i:discord.Interaction):
+        if not await hub.service.need(i,'games'):return
+        stats=hub.store.profile(i.guild_id,i.user.id).get('arcade_cards',{})
+        card=discord.Embed(title='Vivi · Your card profile',description='Fictional practice chips only. No bets, purchases, transfers or cash value.',color=0xe4a3bc)
+        for kind in CARD_TYPES:
+            values=stats.get(kind,{})
+            card.add_field(name=kind.replace('_',' ').title(),value=f"Played: {values.get('played',0)} · Wins: {values.get('wins',0)} · Chips: {values.get('chips',0)}",inline=False)
+        await i.response.send_message(embed=card,ephemeral=True)
+    def register_network(kind):
+        async def play(i:discord.Interaction,difficulty:str='easy',size:str='small'):
+            await hub.start(i,kind,difficulty=difficulty,size=size)
+        play=app_commands.choices(difficulty=[app_commands.Choice(name=x.title(),value=x) for x in DIFFICULTIES],size=[app_commands.Choice(name=f'{x.title()} ({n}×{n})',value=x) for x,n in SIZES.items()])(play)
+        puzzles.command(name=kind,description={'pipe_connector':'Connect the pipeline before water arrives; generated, saved maps.','circuit_repair':'Rotate wires to power every tile of a generated circuit.','laser_locks':'Redirect a beam through mirrors to unlock the receiver.'}[kind])(play)
+    for kind in NETWORK_TYPES:register_network(kind)
     @group.command(name='connect_four',description='Challenge a member to Connect Four.')
     async def connect_four(i:discord.Interaction,opponent:discord.Member): await hub.start(i,'connect_four',opponent)
     @group.command(name='checkers',description='Challenge a member to American checkers.')

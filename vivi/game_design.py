@@ -30,6 +30,27 @@ def presentation(game,viewer=None):
         if game.get('finished'):data.update(done=True,status='Tournament complete')
         return data
     if not game.get('accepted',True) and not data['done']:data['status']='Waiting for your opponent'
+    if kind in {'blackjack','go_fish'}:
+        if viewer is not None and viewer not in game['players']:raise ValueError('This hand belongs to another player.')
+        player=game['players'].index(viewer) if viewer is not None else None
+        data.update(private=player is not None,vs_vivi=game.get('vs_vivi',False))
+        if kind=='blackjack':
+            from .card_games import total
+            data.update(hands=engine.visible(player),stats=['Practice chips only','10 chips per win','Vivi stands on soft 17' if game.get('vs_vivi') else 'Head-to-head: closest to 21'])
+            data['scores']=[total(hand) if engine.done or player==n else None for n,hand in enumerate(engine.hands)]
+        else:
+            from .card_games import RANKS
+            data['hand_counts']=[f'{rank}: {sum(card[:-1]==rank for card in engine.hands[player])}' for rank in RANKS if player is not None and any(card[:-1]==rank for card in engine.hands[player])]
+            data.update(hand=list(engine.hands[player]) if player is not None else None,counts=[len(hand) for hand in engine.hands],books=[list(books) for books in engine.books],last=engine.last,stats=[f'Player {n+1}: {len(books)} books' for n,books in enumerate(engine.books)]+[f'{len(engine.deck)} cards in deck'])
+        return data
+    if kind in {'pipe_connector','circuit_repair','laser_locks'}:
+        data.update(grid=[list(row) for row in engine.cells],stats=[f'{engine.size} x {engine.size} map',engine.difficulty.title(),f'{engine.moves} rotations'],highlight=[])
+        if kind=='laser_locks':data['beam']=[list(cell) for cell in engine.beam()[0]]
+        else:
+            powered,leaks=engine.trace();data['highlight']=[list(cell) for cell in powered]
+            data['stats'].append(f'{len(powered)} / {engine.size**2} tiles powered' if kind=='circuit_repair' else f'{len(powered)} connected tiles')
+        if engine.deadline:data['deadline']=int(engine.deadline);data['stats'].append('Water arrives at the shown time')
+        return data
     if kind=='tictactoe':data['grid']=[engine.cells[r*3:r*3+3] for r in range(3)]
     elif kind=='connect_four':data['stats']=[f'Player 1: {sum(row.count(1) for row in engine.cells)} discs',f'Player 2: {sum(row.count(2) for row in engine.cells)} discs'];data['grid']=[list(row) for row in engine.cells]
     elif kind=='chess':
@@ -136,7 +157,21 @@ def board(draw,data,palette,xy=(70,165),box=520,key='grid',caption=None):
             if kind=='memory' and value['matched']:fill='#3c655c'
             draw.rounded_rectangle((x+inset,y+inset,x+cell-inset,y+cell-inset),radius=8 if inset>1 else 1,fill=fill)
             center=(x+cell/2,y+cell/2)
-            if kind=='chess' and value:chess_piece(draw,x+cell*.1,y+cell*.05,cell*.8,value['piece'],value['side'],palette)
+            if kind in {'pipe_connector','circuit_repair','laser_locks'}:
+                ink=palette['accent'] if [r,c] in data.get('highlight',[]) else palette['second']
+                if kind=='laser_locks':
+                    if [r,c] in data.get('beam',[]):draw.ellipse((center[0]-3,center[1]-3,center[0]+3,center[1]+3),fill=palette['accent'])
+                    if value in {1,2}:
+                        endpoints=(x+cell*.22,y+cell*.78,x+cell*.78,y+cell*.22) if value==1 else (x+cell*.22,y+cell*.22,x+cell*.78,y+cell*.78)
+                        draw.line(endpoints,fill=palette['second'],width=max(3,int(cell*.07)))
+                    elif value==3:draw.rectangle((x+cell*.2,y+cell*.2,x+cell*.8,y+cell*.8),fill=palette['muted'])
+                else:
+                    for direction,(dr,dc) in enumerate([(-1,0),(0,1),(1,0),(0,-1)]):
+                        if value&(1<<direction):draw.line((center[0],center[1],center[0]+dc*(cell/2-4),center[1]+dr*(cell/2-4)),fill=ink,width=max(3,int(cell*.12)))
+                    draw.ellipse((center[0]-3,center[1]-3,center[0]+3,center[1]+3),fill=ink)
+                if (r,c)==(0,0):draw.text((x+4,y+3),'S',font=font(max(10,int(cell*.25))),fill=palette['text'])
+                if kind!='circuit_repair' and (r,c)==(height-1,width-1):draw.text((x+4,y+3),'R',font=font(max(10,int(cell*.25))),fill=palette['text'])
+            elif kind=='chess' and value:chess_piece(draw,x+cell*.1,y+cell*.05,cell*.8,value['piece'],value['side'],palette)
             elif kind=='checkers' and value:
                 color=palette['accent'] if value['side']==0 else palette['second'];draw.ellipse((x+cell*.17,y+cell*.17,x+cell*.83,y+cell*.83),fill=color,outline='#f2e7f1',width=2)
                 if value['king']:centered(draw,center,'K',int(cell*.35),palette['background'],True)
@@ -165,8 +200,27 @@ def board(draw,data,palette,xy=(70,165),box=520,key='grid',caption=None):
             elif kind in {'sudoku','word_search','crossword'} and value and value!='#':
                 color=palette['text'] if kind!='sudoku' or r*9+c in data['clues'] else palette['accent'];centered(draw,center,value,int(cell*.47),color,True)
             if kind=='crossword' and (r,c) in {(0,0),(0,2),(2,0)}:draw.text((x+6,y+5),{(0,0):'1',(0,2):'2',(2,0):'3'}[(r,c)],font=font(15),fill=palette['muted'])
+    if kind=='laser_locks':
+        path=data.get('beam',[])
+        for a,b in zip(path,path[1:]):
+            draw.line((x0+(a[1]+.5)*cell,y0+(a[0]+.5)*cell,x0+(b[1]+.5)*cell,y0+(b[0]+.5)*cell),fill=palette['accent'],width=max(2,int(cell*.045)))
     if kind=='sudoku':
         for n in [0,3,6,9]:draw.line((x0+n*cell,y0,x0+n*cell,y0+9*cell),fill=palette['second'],width=3);draw.line((x0,y0+n*cell,x0+9*cell,y0+n*cell),fill=palette['second'],width=3)
+
+
+def draw_cards(draw,cards,palette,x,y):
+    # Wrap compact cards instead of clipping large Go Fish hands.
+    width=52 if len(cards)>12 else 68;step=width+7;columns=int(510/step)
+    for index,card in enumerate(cards):
+        px=x+(index%columns)*step;py=y+(index//columns)*88
+        if py+78>700:break
+        hidden=card=='??';fill=palette['tile'] if hidden else '#f8f0f6'
+        draw.rounded_rectangle((px,py,px+width,py+78),radius=7,fill=fill,outline=palette['accent'],width=2)
+        if hidden:centered(draw,(px+width/2,py+39),'V',25,palette['accent'])
+        else:
+            ink='#aa285c' if card[-1] in 'HD' else '#251d34'
+            draw.text((px+6,py+6),card[:-1],font=font(19),fill=ink)
+            centered(draw,(px+width/2,py+51),card[-1],20,ink)
 
 
 def render(data):
@@ -186,6 +240,19 @@ def render(data):
         wrapped(draw,(78,615),data.get('last',''),790,20,palette['text']);wrapped(draw,(78,655),'Ships = lavender  |  X = hit  |  circle = miss',790,16,palette['muted'])
     else:
         if 'grid' in data:board(draw,data,palette)
+        elif kind in {'blackjack','go_fish'}:
+            if kind=='blackjack':
+                for player,hand in enumerate(data['hands']):
+                    y=180+player*220;name='Vivi' if data.get('vs_vivi') and player==1 else f'Player {player+1}'
+                    draw.text((75,y),name+(f" / {data['scores'][player]}" if data['scores'][player] is not None else ''),font=font(22),fill=palette['accent'])
+                    draw_cards(draw,hand,palette,75,y+40)
+            else:
+                draw.text((75,170),'BOOKS OF FOUR',font=font(22),fill=palette['accent'])
+                for player,books in enumerate(data['books']):wrapped(draw,(75,215+player*65),f'Player {player+1}: '+(', '.join(books) or 'No books yet'),500,21,palette['text'])
+                if data['hand'] is not None:
+                    draw.text((75,370),'YOUR PRIVATE HAND',font=font(18),fill=palette['accent']);wrapped(draw,(75,410),'  '.join(data['hand_counts']),480,24,palette['text'],line_height=35,max_lines=5) if len(data['hand'])>18 else draw_cards(draw,data['hand'],palette,75,410)
+                else:wrapped(draw,(75,390),'Hands stay private. Open Private hand to see yours, then ask for a rank using Enter move.',490,27,palette['text'],max_lines=5)
+                wrapped(draw,(75,615),data.get('last',''),490,17,palette['muted'],max_lines=3)
         elif kind=='hangman':
             draw.line((150,440,370,440),fill=palette['muted'],width=5);draw.line((195,440,195,200,325,200,325,240),fill=palette['muted'],width=5)
             errors=data['errors']
@@ -240,6 +307,7 @@ def embed(data,players=None):
     if players:result.add_field(name='Players',value=' · '.join(f'{n+1}: <@{u}>' for n,u in enumerate(players)),inline=False)
     if not data.get('done') and data['kind']!='anagram':result.add_field(name='Turn',value=f'Player {data.get("turn",0)+1}',inline=True)
     if data['kind']=='anagram' and data.get('deadline') and not data.get('done'):result.add_field(name='Round ends',value=f'<t:{data["deadline"]}:R>',inline=True)
+    if data['kind']=='pipe_connector' and data.get('deadline') and not data.get('done'):result.add_field(name='Water arrives',value=f'<t:{data["deadline"]}:R>',inline=True)
     if data.get('private'):result.add_field(name='Private board',value='Only you can see this response.',inline=False)
     result.add_field(name='Controls',value=data.get('help','')[:900] or 'Use the buttons below.',inline=False)
     if data['kind']=='trivia':

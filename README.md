@@ -240,3 +240,8 @@ is needed locally. Discord dashboard login needs OAuth credentials configured
 on your computer. See [website setup and future hosting](docs/WEBSITE.md).
 
 ![Vivi website](docs/assets/website-desktop.png)
+
+New arcade additions: **Blackjack and Go Fish** against Vivi or a consenting
+member, plus generated **Pipe Connector, Circuit Repair and Laser Locks** with
+6×6–14×14 maps, difficulty levels and saved progress.
+See [commands, rules and previews](docs/NEW-GAMES.md).
