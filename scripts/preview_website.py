@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 from types import SimpleNamespace as NS
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock,MagicMock
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from aiohttp import web
 import discord
@@ -30,6 +30,9 @@ async def main(port,dashboard_preview=False):
             if dashboard_preview:
                 bot._connection.user=NS(id=99)
                 guild=NS(id=1,owner_id=7,name='Velvet Ruins',text_channels=[],channels=[],categories=[],voice_channels=[],roles=[],me=NS(display_name='Preview bot',guild_permissions=discord.Permissions(ban_members=True,view_audit_log=True),top_role=10),get_member=lambda uid:None,get_channel=lambda cid:None)
+                welcome=MagicMock(spec=discord.TextChannel);welcome.id=3;welcome.name='welcome';welcome.send=AsyncMock()
+                welcome.permissions_for.return_value=discord.Permissions.all()
+                guild.text_channels=[welcome];guild.channels=[welcome];guild.member_count=42;guild.get_channel=lambda cid:welcome if cid==3 else None
                 bot.get_guild=lambda gid:guild if gid==1 else None
                 dashboard.api_guilds=AsyncMock(return_value={'1':dict(id='1',name='Velvet Ruins',permissions='8'),'2':dict(id='2',name='Your next community',permissions='8')})
                 dashboard.sessions['vivi-preview']=dict(profile={'username':'ItsZyVelia','global_name':'ZyVelia','avatar':''},user_id=7,token='not-a-real-token',csrf='preview-only-csrf',expires=time.time()+3600)

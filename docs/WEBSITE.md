@@ -112,3 +112,15 @@ When you have unsaved edits, a notice offers to reload rather than discarding th
 The website now includes a dedicated [feature manager](WEB-MODULES.md) at `/modules`.
 Select a server, browse module cards and enable/disable features directly. Configure
 links open the relevant detailed settings; switches share Discord's saved state.
+
+## Customize modules and event messages
+
+Every active module’s **Configure** button opens a page for that module. Supported server-wide settings use the same validation and database as Discord settings commands. Modules with specialized editors link to those editors; member preferences and individual activities remain in their Discord menus. Global-ban participation retains its separate server-owner consent requirement. Provider credentials remain host configuration.
+
+For **Welcome** or **Goodbye**, choose a destination channel, enable the message, and select text or an embed. Welcome setup works without configuring tickets. Write text with `{member}`, `{username}`, `{server}` and `{member_count}`, or choose a saved template from **Embed writer**. Text welcomes may mention the joining member; embeds and goodbye messages disable mentions. Welcome cards can be included in text welcomes; their layout editor is linked on the page.
+
+**Preview without saving** shows a sample without writing settings or sending to Discord. Use browser Back to preserve the draft. **Save message settings** validates the complete form before saving it together; new join/departure events use it immediately. Enabled messages require a valid channel and the corresponding bot permissions. Disabled drafts can be saved without a destination.
+
+Selecting an embed copies its content into the event settings. This copy is included in configuration backups and remains usable if the library template is deleted. After editing a library template, select it again in the welcome/goodbye composer and save to apply the new version. Previously posted messages remain unchanged. Placeholder expansion is bounded to Discord embed limits.
+
+Changes made through Discord appear on reloading the page. Open customization pages also check for changes automatically and reload only when no unsaved edits exist; otherwise they offer to reload. The welcome channel is shared with existing server setup commands and does not require a bot restart.

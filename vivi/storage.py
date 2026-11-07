@@ -50,6 +50,7 @@ class Store:
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO settings VALUES (?,?,?,?,?)',
                             (guild, welcome, category, staff, logs))
+            self.db.execute("UPDATE options SET value=? WHERE guild=? AND key='welcome_channel'",(json.dumps(welcome),guild))
             self.log_config(guild,'server setup',before)
 
     def add_role(self, guild, role):
@@ -96,6 +97,7 @@ class Store:
         before=self.export_config(guild) if guild and not key.startswith('internal_') else None
         with self.db:
             self.db.execute('INSERT OR REPLACE INTO options VALUES (?,?,?)', (guild,key,json.dumps(value)))
+            if key=='welcome_channel' and value:self.db.execute('UPDATE settings SET welcome=? WHERE guild=?',(value,guild))
             if key=='feature:global_bans' and not value:self.db.execute("DELETE FROM records WHERE guild=? AND kind='global_ban_consent'",(guild,))
             if before is not None: self.log_config(guild,'setting: '+key,before)
 

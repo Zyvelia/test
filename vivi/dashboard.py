@@ -28,8 +28,9 @@ from .website import Website,esc,WEB_SESSION
 from .webconfig import dashboard_endpoint
 from .module_manager import ModuleManager
 from .embed_dashboard import EmbedDashboard
+from .feature_dashboard import FeatureDashboard
 
-class Dashboard(EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDashboard,DashboardTools):
+class Dashboard(FeatureDashboard,EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDashboard,DashboardTools):
     def __init__(self,service):
         self.service=service; self.sessions={}; self.states={}; self.runner=None
         self.client=os.getenv('DISCORD_CLIENT_ID','').strip()
@@ -48,7 +49,7 @@ class Dashboard(EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDas
                              web.get('/revision',self.revision),web.post('/rollback',self.rollback),
                              web.post('/backup-now',self.backup_now),web.get('/scheduled-backup',self.scheduled_backup),
                              web.post('/aliases',self.aliases),web.get('/health',self.health),web.post('/xp-channel',self.xp_channel),
-                             web.post('/branding',self.branding),web.post('/filters',self.filters)]+self.embed_routes()+self.studio_routes()+self.website_routes())
+                             web.post('/branding',self.branding),web.post('/filters',self.filters)]+self.feature_routes()+self.embed_routes()+self.studio_routes()+self.website_routes())
 
     @web.middleware
     async def security(self,request,handler):
@@ -217,6 +218,7 @@ class Dashboard(EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDas
         if feature=='invite_tracking':self.service.invites.cache.pop(guild,None)
         if 'application/json' in getattr(request,'headers',{}).get('Accept',''):
             return web.json_response({'feature':feature,'enabled':value=='true','revision':self.config_revision(guild)})
+        if data.get('return')=='configure':raise web.HTTPSeeOther(f'/configure?guild={guild}&module={feature}&saved=yes')
         raise web.HTTPSeeOther(('/modules' if data.get('return')=='modules' else '/dashboard')+'?guild='+str(guild))
 
     async def logout(self,request):
@@ -246,10 +248,10 @@ class Dashboard(EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDas
             setup+=f'<label>{key}'+self.select(key,options,configuration[key] if configuration else 0)+'</label>'
         setup+='<button>Save server setup</button></form></details>'
         fields='<details id="module-settings"><summary>Customize feature settings</summary><p>Changes save to the same settings used by Discord commands. Choose Save setting to apply each change.</p>'
-        channel_keys={'goodbye_channel':texts,'birthday_channel':texts,'daily_channel':texts,'raid_channel':texts,
+        channel_keys={'welcome_channel':texts,'goodbye_channel':texts,'birthday_channel':texts,'daily_channel':texts,'raid_channel':texts,
                       'voice_category':categories,'voice_lobby':voices,'autorole':roles,'rules_role':roles,'reviewer_role':roles,'review_channel':texts,'lfg_channel':texts}
         for key,typ in OPTION_TYPES.items():
-            if key in {'faq','ticket_categories','aliases','xp_channels','branding','welcome_layout'}: continue
+            if key in {'faq','ticket_categories','aliases','xp_channels','branding','welcome_layout','welcome_embed','goodbye_embed'}: continue
             default=DEFAULTS.get(key,[] if typ is list else False if typ is bool else 0 if typ is int else '')
             if key=='welcome_text': default=tr(store.option(gid,'language','en'),'Welcome {member} to {server}!')+' '+tr(store.option(gid,'language','en'),'Please read the rules and choose your roles.')
             if key=='goodbye_text': default=tr(store.option(gid,'language','en'),'Goodbye {member}.')
@@ -314,6 +316,7 @@ class Dashboard(EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDas
             validate_resources(self.service.store,guild,key,value)
             self.service.store.set_option(gid,key,value)
         except (ValueError,KeyError) as error: raise web.HTTPBadRequest(text=str(error)[:500])
+        if data.get('module') in FEATURES:raise web.HTTPSeeOther(f'/configure?guild={gid}&module={data["module"]}&saved=yes')
         self.done(gid)
 
     async def setup(self,request):

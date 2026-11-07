@@ -60,7 +60,7 @@ HINTS={
  'global_bans':'Only the server owner can enable this. Existing entries may be banned; Ban Members is required. Disabling does not undo existing bans.',
  'games':'Arcade: /games · Cards: /cards · Puzzles: /puzzles · Idle worlds: /idle.',
  'scam_images':'Add reference images in /settings → Setup & backups. Exact matching is the default.',
- 'welcome':'Choose a welcome channel in Server setup.',
+ 'welcome':'Customize the channel, text, saved embed and welcome card in Configure.',
  'welcome_cards':'Also enable Welcome and choose a welcome channel.',
  'goodbye':'Choose a goodbye channel and message.',
  'autorole':'Configure server channels and a safe role below Vivi.',
@@ -110,7 +110,7 @@ class ModuleManager:
             matches=(group=='all' or category==group) and (state=='all' or on==(state=='enabled')) and all(term in (title(key)+' '+description+' '+key+' '+category).lower() for term in query.lower().split())
             if matches:count+=1
             symbol='shield' if category=='Protection' else 'game' if category=='Games & profiles' else 'ticket' if category=='Support' else 'bell' if category=='Voice & alerts' else 'users' if category=='Community' else 'settings'
-            configure=f'<a class="text-link" href="/dashboard?guild={gid}&module={key}#module-settings">Configure →</a>' if key in CONFIGURABLE else f'<a class="text-link" href="/commands?search={COMMAND_TERMS.get(key,key)}">View commands →</a>'
+            configure=f'<a class="text-link" href="/configure?guild={gid}&module={key}">Configure →</a>'
             consent='';owner_disabled=key=='global_bans' and not on and session.get('user_id')!=getattr(guild,'owner_id',None)
             if key=='global_bans':
                 from .global_bans import operator_id

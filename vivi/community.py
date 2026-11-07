@@ -332,14 +332,17 @@ class Community:
                 try: await member.add_roles(role,reason='Vivi automatic newcomer role')
                 except discord.HTTPException: LOG.warning('Automatic role failed in %s',guild.id)
         if not enabled(self.store,guild.id,'welcome'): return
-        config=self.store.settings(guild.id); channel=guild.get_channel(config['welcome']) if config else None
+        config=self.store.settings(guild.id); channel=guild.get_channel(self.store.option(guild.id,'welcome_channel',config['welcome'] if config else 0))
         if not channel: return
         from .i18n import tr
         language=self.store.option(guild.id,'language','en')
         text=self.store.option(guild.id,'welcome_text',tr(language,'Welcome {member} to {server}!')+' '+tr(language,'Please read the rules and choose your roles.'))
-        text=text.replace('{member}',member.mention).replace('{server}',guild.name)
+        from .message_templates import expand,message_embed
+        text=expand(text,member,mention=True)[:2000]
         try:
-            if enabled(self.store,guild.id,'welcome_cards'):
+            if self.store.option(guild.id,'welcome_mode','text')=='embed' and self.store.option(guild.id,'welcome_embed',{}):
+                await channel.send(embed=message_embed(self.store.option(guild.id,'welcome_embed',{}),member),allowed_mentions=discord.AllowedMentions.none())
+            elif enabled(self.store,guild.id,'welcome_cards'):
                 avatar=await member.display_avatar.with_size(256).with_format('png').read()
                 data=await asyncio.to_thread(card_bytes,member.display_name,guild.name,
                     text.replace(member.mention,member.display_name),self.store.option(guild.id,'welcome_color','#87CEEB'),avatar,tr(language,'Welcome, {name}!',name=member.display_name[:30]),self.store.option(guild.id,'branding',{}).get('name','Vivi'),self.store.option(guild.id,'welcome_layout',None))
@@ -355,7 +358,10 @@ class Community:
             from .i18n import tr
             text=self.store.option(member.guild.id,'goodbye_text',tr(self.store.option(member.guild.id,'language','en'),'Goodbye {member}.'))
             with contextlib.suppress(discord.HTTPException):
-                await channel.send(text.replace('{member}',member.display_name).replace('{server}',member.guild.name))
+                from .message_templates import expand,message_embed
+                if self.store.option(member.guild.id,'goodbye_mode','text')=='embed' and self.store.option(member.guild.id,'goodbye_embed',{}):
+                    await channel.send(embed=message_embed(self.store.option(member.guild.id,'goodbye_embed',{}),member),allowed_mentions=discord.AllowedMentions.none())
+                else:await channel.send(expand(text,member)[:2000],allowed_mentions=discord.AllowedMentions.none())
 
     async def on_message_edit(self,before,after):
         if before.content!=after.content or [a.id for a in getattr(before,'attachments',[])]!=[a.id for a in getattr(after,'attachments',[])]: await self.on_message(after,edited=True)

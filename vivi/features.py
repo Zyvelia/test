@@ -21,6 +21,7 @@ FEATURES = {
 }
 OPTION_TYPES = {
     'scam_image_distance':int,
+    'welcome_channel':int, 'welcome_mode':str, 'goodbye_mode':str, 'welcome_embed':dict, 'goodbye_embed':dict,
     'welcome_text': str, 'welcome_color': str, 'goodbye_channel': int, 'goodbye_text': str,
     'autorole': int, 'rules_role': int, 'rules_text': str, 'blocked_words': list,
     'blocked_domains': list, 'spam_limit': int, 'dm_explanations': bool,
@@ -71,6 +72,12 @@ def validate_option(key, value):
         return
     if key not in OPTION_TYPES or type(value) is not OPTION_TYPES[key]: raise ValueError('Unknown setting or invalid type.')
     if isinstance(value,str) and len(value)>1800: raise ValueError('Setting is too long.')
+    if key in {'welcome_embed','goodbye_embed'}:
+        if value:
+            from .embed_writer import validate
+            validate(value)
+    if key in {'welcome_mode','goodbye_mode'} and value not in {'text','embed'}:raise ValueError('Choose text or embed.')
+    if key=='welcome_channel' and not 0<=value<2**63:raise ValueError('Invalid channel ID.')
     if key=='welcome_layout':
         from .studio_layout import validate_layout
         validate_layout(value)

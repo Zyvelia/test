@@ -4,7 +4,7 @@ import discord
 from .features import OPTION_TYPES, validate_option
 from .policy import safe_self_role
 
-DEFAULTS={'welcome_text':'Welcome {member} to {server}!','welcome_color':'#87CEEB',
+DEFAULTS={'welcome_mode':'text','goodbye_mode':'text','welcome_text':'Welcome {member} to {server}!','welcome_color':'#87CEEB',
  'goodbye_text':'Goodbye {member}.','spam_limit':6,'daily_hour':9,'timezone':'UTC','ai_limit':20,
  'mention_limit':5,'raid_limit':8,'raid_window':30,'raid_action':'alert','raid_lock_minutes':5,
  'lfg_hours':24,'language':'en','backup_hours':24,'backup_keep':7, 'warning_count':3,'warning_timeout_minutes':10,'warning_window_days':30,'voice_user_limit':0}
@@ -32,7 +32,7 @@ def validate_resources(store,guild,name,value):
         role=guild.get_role(value)
         if not config or not role or role.id==config['staff'] or not safe_self_role(role,guild.me):
             raise ValueError('Choose a safe non-staff role below Vivi; configure server channels first.')
-    channels={'review_channel':discord.TextChannel,'lfg_channel':discord.TextChannel,'goodbye_channel':discord.TextChannel,'birthday_channel':discord.TextChannel,
+    channels={'welcome_channel':discord.TextChannel,'review_channel':discord.TextChannel,'lfg_channel':discord.TextChannel,'goodbye_channel':discord.TextChannel,'birthday_channel':discord.TextChannel,
               'daily_channel':discord.TextChannel,'raid_channel':discord.TextChannel,
               'voice_lobby':discord.VoiceChannel,'voice_category':discord.CategoryChannel}
     if name in channels and value and not isinstance(guild.get_channel(value),channels[name]):
