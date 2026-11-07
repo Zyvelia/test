@@ -258,6 +258,8 @@ class ViviBot(commands.Bot):
         register_menus(self)
         from .global_ban_menu import register_global_bans
         register_global_bans(self)
+        from .embed_menu import register_embeds
+        register_embeds(self)
         await self.tree.set_translator(ViviTranslator())
         synced = await self.sync_application_commands()
         await self.community.start()

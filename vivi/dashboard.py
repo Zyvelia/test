@@ -27,8 +27,9 @@ from .studio import StudioDashboard
 from .website import Website,esc,WEB_SESSION
 from .webconfig import dashboard_endpoint
 from .module_manager import ModuleManager
+from .embed_dashboard import EmbedDashboard
 
-class Dashboard(ModuleManager,Website,StudioDashboard,AdvancedDashboard,DashboardTools):
+class Dashboard(EmbedDashboard,ModuleManager,Website,StudioDashboard,AdvancedDashboard,DashboardTools):
     def __init__(self,service):
         self.service=service; self.sessions={}; self.states={}; self.runner=None
         self.client=os.getenv('DISCORD_CLIENT_ID','').strip()
@@ -47,7 +48,7 @@ class Dashboard(ModuleManager,Website,StudioDashboard,AdvancedDashboard,Dashboar
                              web.get('/revision',self.revision),web.post('/rollback',self.rollback),
                              web.post('/backup-now',self.backup_now),web.get('/scheduled-backup',self.scheduled_backup),
                              web.post('/aliases',self.aliases),web.get('/health',self.health),web.post('/xp-channel',self.xp_channel),
-                             web.post('/branding',self.branding),web.post('/filters',self.filters)]+self.studio_routes()+self.website_routes())
+                             web.post('/branding',self.branding),web.post('/filters',self.filters)]+self.embed_routes()+self.studio_routes()+self.website_routes())
 
     @web.middleware
     async def security(self,request,handler):
@@ -286,7 +287,7 @@ class Dashboard(ModuleManager,Website,StudioDashboard,AdvancedDashboard,Dashboar
         subscriptions+='<form action="/subscription" method="post">'+hidden+self.select('provider',[(x,x) for x in ['twitch','youtube','github_releases','github_commits','webhook','steam']])+self.select('channel',texts)+'<input name="source" placeholder="Twitch login / UC channel ID / owner/repo" required><button name="action" value="add">Add subscription</button></form></details>'
         backup=f'<details><summary>Backup and restore</summary><p><a href="/backup?guild={gid}">Download configuration backup</a></p><form action="/restore" method="post" enctype="multipart/form-data">'+hidden+'<input name="file" type="file" accept=".json" required><label><input name="confirm" type="checkbox" value="yes" required> Replace this server’s configuration with the backup</label><button>Restore configuration</button></form></details>'
         verification='<details><summary>Live permission and provider checks</summary><form action="/verify" method="post">'+hidden+'<label><input name="providers" type="checkbox" value="yes"> Also send a small AI/translation test request (provider charges may apply)</label><button>Run checks without posting Discord messages</button></form></details>'
-        return setup+fields+faq+tickets+subscriptions+backup+verification+self.tools_forms(gid,session)+self.advanced_forms(gid,session)+self.studio_forms(gid,session)
+        return f'<details><summary>Saved embed writer</summary><p>Write rules, announcements and reusable messages. <a href="/embeds?guild={gid}">Open embed writer →</a></p></details>'+setup+fields+faq+tickets+subscriptions+backup+verification+self.tools_forms(gid,session)+self.advanced_forms(gid,session)+self.studio_forms(gid,session)
 
     async def form(self,request):
         data=await request.post(); session=self.session(request)

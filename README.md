@@ -270,3 +270,7 @@ The new module manager has categories, search and switches that sync with Discor
 opt-in, evidence/reason review, persistent per-server results and verified optional
 undo. Controls are bound to ZyVelia's configured numeric Discord user ID.
 [Global-ban setup, consent and limits](docs/GLOBAL-BANS.md).
+
+### Saved embed writer
+
+Use `/embed` or the dashboard’s **Embed writer** to create, save, preview and post reusable rules, announcements and guides. Both interfaces share the server’s template library. The website supports colors, links, images and reorderable fields; posting requires confirmation and channel permissions. See [the embed writer guide](docs/EMBEDS.md).
