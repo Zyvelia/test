@@ -85,3 +85,10 @@ class EmbedWriterTests(unittest.IsolatedAsyncioTestCase):
         for n in range(100):writer.save(self.store,1,{**self.doc,'name':f'Rule {n}'},10)
         with self.assertRaises(ValueError):writer.save(self.store,1,self.doc,10)
         view=EmbedMenu(self.store,self.interaction(),page=4);self.assertEqual(len(view.children[0].options),20)
+
+    async def test_template_api_shares_library_without_cross_server_records(self):
+        ident=writer.save(self.store,1,self.doc,10);writer.save(self.store,2,{**self.doc,'name':'OTHER_SERVER_PRIVATE'},10)
+        response=await self.dashboard.embed_templates(self.request('/api/embed-templates?guild=1'));data=json.loads(response.text)
+        self.assertEqual([row['id'] for row in data['templates']],[ident]);self.assertNotIn('OTHER_SERVER_PRIVATE',response.text)
+        self.dashboard.api_guilds.return_value={}
+        with self.assertRaises(web.HTTPForbidden):await self.dashboard.embed_templates(self.request('/api/embed-templates?guild=1'))

@@ -4,11 +4,12 @@ import json
 import re
 from types import SimpleNamespace
 import discord
-from aiohttp import web
+from aiohttp import web,ClientError
 from vivi.core.features import FEATURES,OPTION_TYPES,enabled
 from vivi.core.settings import DEFAULTS,validate_resources
 from vivi.site.module_manager import title,DESCRIPTIONS,GROUPS,group_for,FAMILIES,family_for,family_navigation
 from vivi.site import embed_writer
+from vivi.site.website import asset_stamp
 from vivi.site.message_templates import expand,message_embed
 
 E=lambda value:html.escape(str(value),quote=True)
@@ -96,14 +97,23 @@ class FeatureDashboard:
         store=self.service.store;guild=self.service.bot.get_guild(gid);configuration=store.settings(gid)
         channel=store.option(gid,kind+'_channel',configuration['welcome'] if kind=='welcome' and configuration else 0)
         mode=store.option(gid,kind+'_mode','text');text=store.option(gid,kind+'_text',DEFAULTS[kind+'_text']);snapshot=store.option(gid,kind+'_embed',{})
-        result='<div class="message-workspace"><form action="/messages" method="post" id="message-composer">'+self.hidden(session,gid)+f'<input type="hidden" name="kind" value="{kind}"><label><input type="checkbox" name="enabled" value="yes"'+(' checked' if enabled(store,gid,kind) else '')+f'> Enable {kind} messages</label><label>Destination channel '+self.select('channel',[(0,'Not set')]+[(c.id,'#'+c.name) for c in guild.text_channels],channel)+'</label><label>Message style '+self.select('mode',[('text','Text message'),('embed','Embed message')],mode)+'</label>'+f'<label>Message text<textarea name="text" rows="8" maxlength="1800">{E(text)}</textarea></label><p>Placeholders: <code>{{member}}</code>, <code>{{username}}</code>, <code>{{server}}</code>, <code>{{member_count}}</code>. Text welcomes can mention the joining member. Embeds and goodbye messages do not ping.</p>'
-        options=[('','Keep current configured embed' if snapshot else 'Choose a saved embed')]+[(row['id'],row['data']['document']['name']) for row in store.records(gid,embed_writer.KIND)]
-        result+='<label>Saved embed '+self.select('template',options)+'</label><p>Choosing a template copies it into these settings. Edit it in the embed writer, then select it here again to apply updates. Deleting the library template will not break messages.</p>'+f'<p><a href="/embeds?guild={gid}">Create or edit an embed →</a></p>'
-        if kind=='welcome':result+='<label><input type="checkbox" name="cards" value="yes"'+(' checked' if enabled(store,gid,'welcome_cards') else '')+f'> Add a welcome card to text messages</label><p><a href="/configure?guild={gid}&module=welcome_cards">Customize welcome-card layout →</a></p>'
-        documents={row['id']:row['data']['document'] for row in store.records(gid,embed_writer.KIND)}
-        documents['']=snapshot
+        documents={row['id']:row['data']['document'] for row in store.records(gid,embed_writer.KIND)};documents['']=snapshot
+        result='<div class="message-workspace message-designer"><form action="/messages" method="post" id="message-composer">'+self.hidden(session,gid)+f'<input type="hidden" name="kind" value="{kind}">'
+        result+=f'<header class="composer-header"><div><span class="eyebrow">Make an entrance</span><h3>{kind.title()} message</h3><span id="message-draft-state">No unsaved changes</span><p>Write it once. Make every {"hello" if kind=="welcome" else "goodbye"} feel personal.</p></div><label class="composer-switch"><input type="checkbox" name="enabled" value="yes"'+(' checked' if enabled(store,gid,kind) else '')+'><span>Automatic messages</span></label></header>'
+        result+='<section class="composer-section"><label>Post in channel '+self.select('channel',[(0,'Choose a channel')]+[(c.id,'#'+c.name) for c in guild.text_channels],channel)+'</label><p class="field-hint">Used for automatic messages and anything you send from this editor.</p></section>'
+        result+='<fieldset class="message-format"><legend>Message format</legend>'
+        for value,label,hint in [('text','Text message','Simple, with optional welcome card'),('embed','Embed message','Styled titles, fields and images')]:
+            result+=f'<label><input type="radio" name="mode" value="{value}"'+(' checked' if mode==value else '')+f'><span><strong>{label}</strong><small>{hint}</small></span></label>'
+        result+='</fieldset><section class="composer-section" data-message-mode="text"'+(' hidden' if mode!='text' else '')+f'><div class="field-heading"><label for="welcome-message-text">Your message</label><span id="message-character-count">{len(text)} / 1,800</span></div><textarea id="welcome-message-text" name="text" rows="6" maxlength="1800" placeholder="Welcome {{member}} to {{server}}!">{E(text)}</textarea><div class="placeholder-chips"><span>Insert:</span>'
+        for token,label in [('member','@Member'),('username','Username'),('server','Server'),('member_count','Member count')]:result+=f'<button type="button" data-insert-token="{token}" title="Insert {{{token}}}">{label}</button>'
+        result+='</div><p class="field-hint">Click a chip to insert a placeholder at your cursor.</p>'
+        if kind=='welcome':result+='<div class="welcome-card-option"><label><input type="checkbox" name="cards" value="yes"'+(' checked' if enabled(store,gid,'welcome_cards') else '')+f'><span>Add a welcome card<small>A personalized image alongside your text.</small></span></label><a href="/configure?guild={gid}&module=welcome_cards">Design card →</a></div>'
+        result+='</section><section class="composer-section" data-message-mode="embed"'+(' hidden' if mode!='embed' else '')+'><label>Choose your embed '+self.select('template',[('',f'Current: {snapshot["name"]}' if snapshot else 'Choose a saved embed')]+[(ident,doc['name']) for ident,doc in documents.items() if ident], '')+'</label>'
+        result+=f'<p class="field-hint">Pick a template from your shared library, or <a href="/embeds?guild={gid}" target="_blank" rel="noopener">create an embed →</a>.</p><button type="button" id="message-refresh-embeds">Refresh library</button><p id="embed-choice-status" role="status"></p><details class="embed-copy-note"><summary>How saved templates work</summary><p>A copy is saved with this message. After editing the library template, select it again here to apply its latest version.</p></details></section>'
         result+=f'<div id="message-preview-data" hidden data-documents="{E(json.dumps(documents))}" data-server="{E(guild.name)}" data-count="{E(getattr(guild,"member_count",0) or 0)}"></div>'
-        result+='<button name="action" value="preview">Preview without saving</button><button name="action" value="save">Save message settings</button></form><aside class="message-help"><h3>How it works</h3><p>Choose a channel, write your text or choose an embed, and save. Changes apply to future joins or departures. Existing messages stay unchanged.</p><p>Vivi needs View Channel and Send Messages, plus Embed Links for embeds or Attach Files for cards. You can save drafts while disabled.</p><h3>Live message preview</h3><article class="embed-preview" id="message-live-preview" aria-live="polite"></article><p>Sample member. Discord renders markdown and images on delivery.</p></aside></div><script src="/assets/message-preview.js" defer></script>'
+        result+='<footer class="composer-actions"><div><button name="action" value="save">Save settings</button><button type="button" id="message-send">Send to Discord →</button><button class="composer-preview-button" name="action" value="preview">Expanded preview</button></div><p>Save updates future automatic messages. Send posts your current draft once.</p><p id="message-send-status" role="status" aria-live="polite"></p></footer></form>'
+        result+='<aside class="message-preview-panel"><div class="preview-heading"><h3>Live preview</h3><span class="preview-badge">LIVE</span></div><p class="preview-channel" id="message-preview-channel"></p><div class="discord-preview-shell"><div class="preview-author"><img src="/assets/vivi-avatar.png" alt="" width="36" height="36"><strong>Vivi</strong><span>APP</span><small>Sample message</small></div><article class="embed-preview" id="message-live-preview" aria-live="polite"></article></div><p class="field-hint">Preview uses a sample member. Sending uses your Discord profile, without pinging anyone.</p><details class="message-help"><summary>Before you turn it on</summary><p>Vivi needs View Channel and Send Messages, plus Embed Links for embeds or Attach Files for cards. You can save a draft while automatic messages are off.</p></details></aside></div>'
+        result+='<dialog id="confirm-message-send" aria-labelledby="confirm-message-title"><span class="eyebrow">One message, right now</span><h2 id="confirm-message-title">Send to Discord?</h2><p id="confirm-message-destination"></p><p>The member placeholders will use your profile. This will not save your settings or enable automatic messages.</p><div class="send-dialog-actions"><button type="button" id="confirm-message-cancel">Cancel</button><button type="button" id="confirm-message-submit">Confirm send</button></div></dialog><script src="/assets/message-preview.js?v='+asset_stamp("message-preview.js")+'" defer></script>'
         return result
 
     async def save_messages(self,request):
@@ -122,6 +132,7 @@ class FeatureDashboard:
                     embed=message_embed(snapshot,sample);body=f'<article class="embed-preview" style="border-color:{E(snapshot["color"])}"><h3>{E(embed.title or "")}</h3><p>{E(embed.description or "")}</p>'+''.join(f'<h4>{E(f.name)}</h4><p>{E(f.value)}</p>' for f in embed.fields)+f'<small>{E(embed.footer.text or "")}</small></article><p>Text preview; Discord renders markdown and images when sent.</p>'
                 else:body=f'<article class="embed-preview"><p>{E(expand(text,sample))}</p></article>'
                 return self.page('<h2>Message preview</h2><p>Nothing was saved or sent.</p>'+body+f'<p><a href="/configure?guild={gid}&module={kind}">Back to saved settings</a> · Use your browser’s Back button to keep this draft.</p>')
+            if data.get('action')=='send':return await self.send_draft_message(request,data,session,gid,guild,kind,mode,text,snapshot,cards,channel_id)
             if data.get('action')!='save':raise ValueError('Unknown action.')
             channel=guild.get_channel(channel_id)
             if on:
@@ -140,3 +151,36 @@ class FeatureDashboard:
                 store.log_config(gid,kind+' message composer',before)
         except (ValueError,TypeError) as error:raise web.HTTPBadRequest(text=str(error))
         raise web.HTTPSeeOther(f'/configure?guild={gid}&module={kind}&saved=yes')
+
+    async def send_draft_message(self,request,data,session,gid,guild,kind,mode,text,snapshot,cards,channel_id):
+        if data.get('confirm_send')!='yes':raise ValueError('Confirm the destination before sending.')
+        channel=guild.get_channel(channel_id)
+        if not isinstance(channel,discord.TextChannel):raise ValueError('Choose a destination text channel in this server.')
+        try:
+            member=await guild.fetch_member(session['user_id'])
+            if not member.guild_permissions.administrator and member.id!=guild.owner_id:raise web.HTTPForbidden(text='Administrator permission is required to send messages.')
+            permissions=channel.permissions_for(guild.me)
+            if not permissions.view_channel or not permissions.send_messages:raise ValueError('Vivi needs View Channel and Send Messages in this channel.')
+            if mode=='embed' and not permissions.embed_links:raise ValueError('Vivi needs Embed Links in this channel.')
+            if mode=='text' and cards and not permissions.attach_files:raise ValueError('Vivi needs Attach Files for welcome cards.')
+            from vivi.site.message_templates import cut
+            options=dict(allowed_mentions=discord.AllowedMentions.none())
+            if mode=='embed':options['embed']=message_embed(snapshot,member)
+            else:
+                options['content']=cut(expand(text,member,mention=True),2000)
+                if cards:
+                    import asyncio,io
+                    from vivi.site.studio_layout import render_layout,DEFAULT_LAYOUT
+                    avatar=await member.display_avatar.with_size(256).with_format('png').read()
+                    layout=self.service.store.option(gid,'welcome_layout',DEFAULT_LAYOUT)
+                    try:image=await asyncio.to_thread(render_layout,layout,member.display_name,guild.name,expand(text,member),avatar,None,self.service.store.option(gid,'branding',{}).get('name','Vivi'))
+                    except (OSError,ValueError):raise web.HTTPBadGateway(text='The welcome card could not be generated. No message was sent.') from None
+                    options['file']=discord.File(io.BytesIO(image),filename='vivi-welcome.png')
+            try:message=await channel.send(**options)
+            finally:
+                if options.get('file'):
+                    options['file'].close();options['file'].fp.close()
+        except discord.Forbidden:raise web.HTTPForbidden(text='Discord refused the send. Check Vivi’s permissions in this channel.') from None
+        except (discord.HTTPException,ClientError,OSError):raise web.HTTPBadGateway(text='Could not confirm the send. Check the channel before trying again.') from None
+        if 'application/json' in request.headers.get('Accept',''):return web.json_response(dict(sent=True,url=message.jump_url))
+        return self.page(f'<h2>Message sent</h2><p>Your {kind} draft was posted. Settings were not changed.</p><a href="{E(message.jump_url)}">View message</a><p><a href="/configure?guild={gid}&module={kind}">Back to editor</a></p>')

@@ -42,3 +42,11 @@ The welcome-card designer includes a **Vivi velvet neon** layout with pink accen
 The tray now uses `assets/vivi/tray/vivi.png`. `vivi.ico` in the same folder contains 16, 20, 24, 32, 40, 48, 64, 128 and 256 pixel variants for Windows shortcuts and other local uses. `vivi-64.png` is also included. Reopen the tray after updating to load its new image. If artwork is missing, a built-in monogram keeps the tray usable. The artwork can be regenerated with `python scripts/generate_tray_icon.py`.
 
 Automated tests cover access checks, role changes, server isolation, filtering, pagination and icon assets. Browser tests use synthetic accounts and records; native Windows icon display still needs checking on Windows.
+
+## Redesigned message editor and sending now
+
+Welcome and goodbye use separate **Text message** and **Embed message** formats. Only the relevant fields appear. Placeholder chips insert member/server values at the cursor, with a live text counter and an unsaved-change indicator. The preview shows a safe subset of Discord text formatting; final image and layout rendering remains Discord’s responsibility.
+
+**Save settings** changes future automatic messages. **Send to Discord** posts the current draft once to the chosen channel after you confirm. It uses your own Discord profile for member placeholders, does not ping users/roles/everyone, and does not save or enable automatic messages. Text welcomes can include the configured welcome card and your avatar. Current administrator access and Vivi’s channel permissions are checked before posting. A successful send provides a direct message link; a failed/uncertain send asks you to check the channel before retrying.
+
+Create an embed in a separate tab and choose **Refresh library** to load it into the dropdown without losing the current draft. Selecting a saved template shows it in the preview before you send or save. Styles and preview scripts have update-aware asset URLs so a cached old editor does not hide new controls after updating.

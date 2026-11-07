@@ -95,3 +95,38 @@ class FeatureDashboardTests(unittest.IsolatedAsyncioTestCase):
             response=await self.dashboard.configure_module(self.request(feature));self.assertIn('action="'+action+'"',response.text);self.assertIn('name="return_module" value="'+feature+'"',response.text)
         response=await self.dashboard.configure_module(self.request('welcome_cards'))
         self.assertNotIn('action="/studio/announcement"',response.text);self.assertIn('data-editor="welcome"',response.text)
+
+    def sending_member(self):
+        self.member.id=10;self.member.mention='<@10>';self.member.guild_permissions=discord.Permissions(administrator=True);self.guild.owner_id=99;self.guild.fetch_member=AsyncMock(return_value=self.member)
+        self.channel.send.return_value=NS(jump_url='https://discord.com/channels/1/3/100')
+    async def test_send_text_posts_once_without_saving_or_pinging(self):
+        self.sending_member();before=self.store.export_config(1);request=self.post(action='send',confirm_send='yes',enabled='no');request.headers={'Accept':'application/json'}
+        response=await self.dashboard.save_messages(request);self.assertTrue(json.loads(response.text)['sent']);self.channel.send.assert_awaited_once()
+        options=self.channel.send.call_args.kwargs;self.assertIn('<@10>',options['content']);self.assertFalse(options['allowed_mentions'].users);self.assertFalse(options['allowed_mentions'].roles);self.assertFalse(options['allowed_mentions'].everyone);self.assertEqual(before,self.store.export_config(1))
+    async def test_send_embed_uses_shared_template_and_current_profile(self):
+        self.sending_member();ident=embed_writer.save(self.store,1,self.doc,10)
+        response=await self.dashboard.save_messages(self.post(action='send',confirm_send='yes',mode='embed',template=ident))
+        self.assertEqual(response.status,200);self.assertEqual(self.channel.send.call_args.kwargs['embed'].title,'Hi ZyVelia');self.assertFalse(self.channel.send.call_args.kwargs['allowed_mentions'].users)
+    async def test_send_requires_confirmation_admin_and_channel_permissions(self):
+        self.sending_member()
+        with self.assertRaises(web.HTTPBadRequest):await self.dashboard.save_messages(self.post(action='send'))
+        self.channel.send.assert_not_awaited()
+        self.member.guild_permissions=discord.Permissions.none()
+        with self.assertRaises(web.HTTPForbidden):await self.dashboard.save_messages(self.post(action='send',confirm_send='yes'))
+        self.member.guild_permissions=discord.Permissions(administrator=True);self.channel.permissions_for.return_value=discord.Permissions.none()
+        with self.assertRaises(web.HTTPBadRequest):await self.dashboard.save_messages(self.post(action='send',confirm_send='yes'))
+        self.channel.send.assert_not_awaited()
+    async def test_send_cards_closes_attachment_and_does_not_enable_automatic_messages(self):
+        import io
+        from PIL import Image
+        self.sending_member();output=io.BytesIO();Image.new('RGB',(32,32),'pink').save(output,format='PNG')
+        asset=NS(read=AsyncMock(return_value=output.getvalue()));asset.with_size=lambda size:asset;asset.with_format=lambda format:asset;self.member.display_avatar=asset
+        files=[]
+        async def send(**kwargs):files.append(kwargs['file']);self.assertTrue(kwargs['file'].fp.read(8).startswith(b'\x89PNG'));return NS(jump_url='https://discord.com/channels/1/3/100')
+        self.channel.send.side_effect=send
+        await self.dashboard.save_messages(self.post(action='send',confirm_send='yes',cards='yes',enabled='no'))
+        self.assertTrue(files[0].fp.closed);self.assertNotIn('feature:welcome',self.store.export_config(1)['options'])
+    async def test_discord_send_failure_keeps_all_settings(self):
+        self.sending_member();before=self.store.export_config(1);self.channel.send.side_effect=discord.Forbidden(NS(status=403,reason='Forbidden'),'Denied')
+        with self.assertRaises(web.HTTPForbidden):await self.dashboard.save_messages(self.post(action='send',confirm_send='yes'))
+        self.assertEqual(self.store.export_config(1),before)

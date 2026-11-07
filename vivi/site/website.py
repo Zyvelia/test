@@ -45,6 +45,11 @@ def server_avatar(guild_id,name,icon=None):
     return f'<div class="server-avatar"><img data-server-icon src="{esc(url)}" alt="{esc(name)} server icon" width="52" height="52" loading="lazy" referrerpolicy="no-referrer"><span class="server-avatar-fallback" hidden aria-hidden="true">{esc(initials)}</span></div>'
 
 
+def asset_stamp(filename):
+    try:return str((WEB/filename).stat().st_mtime_ns)
+    except OSError:return '1'
+
+
 def command_catalog(bot):
     rows=[]
     for command in bot.tree.walk_commands():
@@ -89,7 +94,7 @@ class Website:
             content='<div class="container dashboard-layout"><aside class="dashboard-rail"><div class="rail-label">Your workspace</div><a href="/dashboard">Your servers</a><a href="/modules">Manage features</a><a href="/embeds">Embed writer</a><a href="/staff">Staff workspace</a><a href="/commands">Command directory</a><a href="/support">Help & setup</a><div class="rail-label">Server modules</div><nav data-dashboard-sections aria-label="Server modules"></nav></aside><div class="dashboard-content"><div id="studio-status" role="status" aria-live="polite"></div><h1>'+esc(name)+' · Server Dashboard</h1><p>'+esc(branding.get('tagline','Your server, your settings.'))+'</p>'+content+'</div></div>'
         scripts='<script src="/assets/site.js" defer></script>'+('<script src="/assets/studio.js" defer></script>' if dashboard else '')
         style='<style>'+extra_style+'</style>' if extra_style else ''
-        return web.Response(content_type='text/html',text='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0d0b12"><meta name="description" content="Vivi brings moderation, community tools, games and customizable profiles to your Discord server."><title>'+esc(title)+' · Vivi</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css">'+style+scripts+'</head><body>'+header+'<main id="main-content">'+content+'</main>'+footer+'</body></html>')
+        return web.Response(content_type='text/html',text='<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0d0b12"><meta name="description" content="Vivi brings moderation, community tools, games and customizable profiles to your Discord server."><title>'+esc(title)+' · Vivi</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/assets/site.css?v='+asset_stamp("site.css")+'">'+style+scripts+'</head><body>'+header+'<main id="main-content">'+content+'</main>'+footer+'</body></html>')
     def site_heading(self,kicker,title,description):return f'<div class="page-heading"><div class="eyebrow">{esc(kicker)}</div><h1>{title}</h1><p>{esc(description)}</p></div>'
     def feature_cards(self,all=False):
         cards=FEATURE_CARDS if all else FEATURE_CARDS[:3]

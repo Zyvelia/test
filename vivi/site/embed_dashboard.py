@@ -10,7 +10,12 @@ from vivi.site import embed_writer as writer
 E=lambda value:html.escape(str(value),quote=True)
 class EmbedDashboard:
     def embed_routes(self):
-        return [web.get('/embeds',self.embed_editor),web.post('/embeds',self.embed_action),web.get('/assets/embed-writer.js',self.embed_script)]
+        return [web.get('/api/embed-templates',self.embed_templates),web.get('/embeds',self.embed_editor),web.post('/embeds',self.embed_action),web.get('/assets/embed-writer.js',self.embed_script)]
+    async def embed_templates(self,request):
+        try:gid=int(request.query.get('guild',''))
+        except ValueError:raise web.HTTPBadRequest(text='Invalid server ID.')
+        await self.authorize(request,gid)
+        return web.json_response({'templates':[dict(id=row['id'],document=row['data']['document']) for row in self.service.store.records(gid,writer.KIND)]})
     async def embed_script(self,request):return web.Response(text=(Path(__file__).parent/'web'/'embed-writer.js').read_text(),content_type='application/javascript')
     async def embed_editor(self,request):
         if not request.query.get('guild'):
