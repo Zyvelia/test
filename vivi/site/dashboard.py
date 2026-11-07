@@ -26,7 +26,7 @@ from vivi.core.i18n import UI_LANGUAGE,localize_html,tr
 
 from vivi.site.studio import StudioDashboard
 
-from vivi.site.website import Website,esc,WEB_SESSION
+from vivi.site.website import Website,esc,WEB_SESSION,server_avatar
 from vivi.site.webconfig import dashboard_endpoint
 from vivi.site.module_manager import ModuleManager
 from vivi.site.embed_dashboard import EmbedDashboard
@@ -148,8 +148,8 @@ class Dashboard(StaffDashboard,DashboardAuth,FeatureDashboard,EmbedDashboard,Mod
             for gid,g in guilds.items():
                 installed=self.service.bot.get_guild(int(gid)) is not None
                 href='/modules?'+urlencode({'guild':gid}) if installed else '/invite?'+urlencode({'guild_id':gid})
-                initials=''.join(word[0] for word in g['name'].split()[:2]) or 'S'
-                rows.append(f'<article class="server-card"><div class="server-avatar">{esc(initials)}</div><h3>{esc(g["name"])}</h3><p>{"Vivi is ready to help." if installed else "Invite Vivi to get started."}</p><a class="btn {"btn-primary" if installed else "btn-ghost"}" href="{esc(href)}">{"Manage server" if installed else "Add Vivi"}</a></article>')
+                avatar=server_avatar(gid,g['name'],g.get('icon'))
+                rows.append(f'<article class="server-card">{avatar}<h3>{esc(g["name"])}</h3><p>{"Vivi is ready to help." if installed else "Invite Vivi to get started."}</p><a class="btn {"btn-primary" if installed else "btn-ghost"}" href="{esc(href)}">{"Manage server" if installed else "Add Vivi"}</a></article>')
             return self.page('<h2>Your servers</h2><p>Choose where you want to make things happen.</p><div class="server-grid">'+(''.join(rows) or '<p>No servers with Administrator permission were found.</p>')+'</div>'+self.logout_form(session))
         try: guild=int(request.query['guild'])
         except ValueError: raise web.HTTPBadRequest(text='Invalid server ID.')

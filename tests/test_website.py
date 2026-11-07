@@ -28,3 +28,16 @@ class WebsiteOriginTests(unittest.TestCase):
             self.assertEqual(dashboard_endpoint('https://vivi.example.com/callback')['bind_host'],'0.0.0.0')
         with patch.dict(os.environ,{'DASHBOARD_LISTEN_PORT':'9876'},clear=True):
             with self.assertRaises(ValueError):dashboard_endpoint('http://127.0.0.1:8765/callback')
+
+class ServerAvatarTests(unittest.TestCase):
+    def test_discord_icons_use_cdn_and_support_animated_hashes(self):
+        from vivi.site.website import server_avatar
+        self.assertIn('https://cdn.discordapp.com/icons/123/'+'a'*32+'.png?size=128',server_avatar(123,'Velvet Ruins','a'*32))
+        self.assertIn('.gif?size=128',server_avatar(123,'Velvet Ruins','a_'+'a'*32))
+    def test_missing_or_invalid_icon_uses_initials_and_never_arbitrary_urls(self):
+        from vivi.site.website import server_avatar
+        for icon in [None,'','https://evil.example/icon.png','../icon','" onerror="alert(1)']:
+            markup=server_avatar(123,'Velvet Ruins',icon);self.assertNotIn('<img',markup);self.assertIn('VR',markup)
+    def test_server_name_is_escaped_in_image_and_fallback(self):
+        from vivi.site.website import server_avatar
+        markup=server_avatar(123,'<script> server','a'*32);self.assertNotIn('<script>',markup);self.assertIn('&lt;script&gt;',markup)

@@ -8,6 +8,7 @@ import discord
 from aiohttp import web
 from vivi.core.features import FEATURES
 from vivi.site.module_manager import module_enabled
+from vivi.site.website import server_avatar
 
 E=lambda value:html.escape(str(value),quote=True)
 
@@ -75,7 +76,8 @@ class StaffDashboard:
             for ident in installed[page*20:page*20+20]:
                 try:_,gid,guild,access=await self.staff_membership(session,ident)
                 except web.HTTPForbidden:continue
-                cards.append(f'<article class="server-card"><h3>{E(guild.name)}</h3><p>Staff access verified.</p><a class="btn btn-primary" href="/staff?guild={gid}">Open staff workspace</a></article>')
+                avatar=server_avatar(gid,guild.name,servers[str(gid)].get('icon') or getattr(getattr(guild,'icon',None),'key',None))
+                cards.append(f'<article class="server-card">{avatar}<h3>{E(guild.name)}</h3><p>Staff access verified.</p><a class="btn btn-primary" href="/staff?guild={gid}">Open staff workspace</a></article>')
             body='<h2>Your staff servers</h2><p>Only servers where your current role allows staff access appear here.</p><div class="server-grid">'+(''.join(cards) or '<p>No authorized staff servers on this page.</p>')+'</div>'
             if page:body+=f'<a href="/staff?page={page-1}">Previous</a> '
             if len(installed)>(page+1)*20:body+=f'<a href="/staff?page={page+1}">Next</a>'

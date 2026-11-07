@@ -36,6 +36,15 @@ def icon(name):return f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColo
 def esc(value):return html.escape(str(value),quote=True)
 
 
+def server_avatar(guild_id,name,icon=None):
+    initials=''.join(word[0] for word in str(name).split()[:2]) or 'S'
+    valid=re.fullmatch(r'[0-9]{1,20}',str(guild_id)) and re.fullmatch(r'(?:a_)?[a-fA-F0-9]{32}',str(icon or ''))
+    if not valid:return '<div class="server-avatar">'+esc(initials)+'</div>'
+    extension='gif' if str(icon).startswith('a_') else 'png'
+    url=f'https://cdn.discordapp.com/icons/{guild_id}/{icon}.{extension}?size=128'
+    return f'<div class="server-avatar"><img data-server-icon src="{esc(url)}" alt="{esc(name)} server icon" width="52" height="52" loading="lazy" referrerpolicy="no-referrer"><span class="server-avatar-fallback" hidden aria-hidden="true">{esc(initials)}</span></div>'
+
+
 def command_catalog(bot):
     rows=[]
     for command in bot.tree.walk_commands():

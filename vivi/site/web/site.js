@@ -1,5 +1,9 @@
 'use strict';
 (() => {
+  document.querySelectorAll('[data-server-icon]').forEach(image=>{
+    const fallback=()=>{image.hidden=true;const initials=image.parentElement.querySelector('.server-avatar-fallback');if(initials){initials.hidden=false;initials.removeAttribute('aria-hidden');}};
+    image.addEventListener('error',fallback);if(image.complete&&!image.naturalWidth)fallback();
+  });
   const toggle=document.getElementById('menu-toggle'),navigation=document.getElementById('site-navigation');
   const closeMenu=()=>{navigation?.classList.remove('is-open');toggle?.setAttribute('aria-expanded','false');};
   toggle?.addEventListener('click',()=>{const open=toggle.getAttribute('aria-expanded')!=='true';toggle.setAttribute('aria-expanded',String(open));navigation.classList.toggle('is-open',open);});
