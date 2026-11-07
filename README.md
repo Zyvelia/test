@@ -249,3 +249,6 @@ See [commands, rules and previews](docs/NEW-GAMES.md).
 **Idle worlds:** `/idle farm` opens Neon Rooftop Farm and `/idle market` opens
 Night Market Empire. Both include private saved profiles, automatic offline earnings,
 upgrades, research and district progression. [Rules and previews](docs/IDLE-GAMES.md).
+
+`/help` now opens a private menu with categories, command search, argument details,
+pagination and saved favorites. [Help menu guide](docs/HELP-MENU.md).

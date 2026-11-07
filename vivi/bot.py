@@ -333,13 +333,10 @@ def register_commands(bot):
     async def ping(i: discord.Interaction):
         await reply(i, f'Online! Gateway latency: {bot.latency * 1000:.0f} ms.')
 
-    @tree.command(name='help', description='See setup, member, and moderator commands.')
+    @tree.command(name='help', description='Browse Vivi’s private help menu, search commands and save favorites.')
     async def help_command(i: discord.Interaction):
-        await reply(i, '**Vivi**\nMembers: /ping, role buttons, ticket buttons.\n'
-                    'Admins: /setup, /role_button, /ticket_panel.\n'
-                    'Moderators: /warn, /warnings, /timeout, /untimeout, /kick, /ban, /purge.\n'
-                    'Search everything with /tools commands. Vivi also has /ticket, /music, /room and /notify. Admins configure /admin features and the dashboard. '
-                    'AI is optional and off by default. The host PC must stay awake.')
+        from .help_menu import open_help
+        await open_help(bot,i)
 
     @tree.command(name='setup', description='Configure welcome, support, and private staff logging channels.')
     @app_commands.guild_only()
