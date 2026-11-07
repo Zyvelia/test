@@ -27,7 +27,7 @@ roles, invalid timezones, and invalid values are rejected.
 - `goodbye_channel`: destination channel ID; `goodbye_text` supports the same tokens.
 - `autorole`: a safe newcomer role ID; enable `autorole` to apply it on join.
 - `rules_text`: rules to display; `rules_role`: a safe role granted after acceptance.
-  Enable `rules`, then `/community rules channel:#rules`.
+  Enable `rules`, then `/community` → **Rules** (channel:#rules).
 
 Rules acceptance is a membership-role tool, not a CAPTCHA or anti-bot guarantee.
 Configure Discord channel permissions so the acceptance role unlocks your member
@@ -74,12 +74,12 @@ Discord's rules may prevent delivery, particularly after a kick or ban.
 
 ## Appeals, private reports and privacy requests
 
-Enable `appeals` for `/community appeal case_id text`. A member can appeal only
+Enable `appeals` for `/community` → **Appeal** (case_id text). A member can appeal only
 their own case. Appeals are saved privately and staff are notified in the log
 channel. **Banned members cannot use slash commands in the banned server.** Publish
 an external appeal contact or use a separate appeals server for those members.
 
-Enable `reports` for `/community report member details`. This sends the allegation
+Enable `reports` for `/community` → **Report** (member details). This sends the allegation
 to staff instead of making a public accusation. Staff can see the reporter's ID;
 this is private, not anonymous. Reports and appeals have a five-minute per-user
 cooldown. The bot withholds staff logs if @everyone can view the log channel;
@@ -104,12 +104,12 @@ remain available for staff review.
 
 ## Role dropdowns and permission previews
 
-`/community role_menu channel category role_ids` posts a persistent dropdown.
+`/community` → **Role Menu** (channel category role_ids) posts a persistent dropdown.
 Categories are Games, Platforms or Notifications. Enter 1–25 role IDs separated by
 commas. The menu replaces only the choices belonging to that menu; unrelated roles
 are preserved. Buttons and dropdowns recheck role safety whenever clicked.
 
-`/community role_preview role` lists server-wide role permission bits. Channel
+`/community` → **Role Preview** (role) lists server-wide role permission bits. Channel
 access may differ because of channel overrides and the member's other roles.
 Notification opt-in roles are ordinary safe roles; configure the relevant channels
 or announcements to use them. The bot does not automatically subscribe to external
@@ -120,21 +120,21 @@ services. Avoid posting overlapping dropdowns containing the same roles.
 Enable their feature flags before use. Poll/giveaway creation and staff decisions
 require Manage Messages; participants do not need staff permissions.
 
-- `/community poll question choices minutes anonymous`: 2–10 choices separated by
+- `/community` → **Poll** (question choices minutes anonymous): 2–10 choices separated by
   `|`. Every member gets one replaceable vote. A timer closes the poll and publishes
-  totals; `/community poll_close ident` closes it early. Open votes persist across
+  totals; `/community` → **Poll Close** (ident) closes it early. Open votes persist across
   restarts. Closing removes individual ballots.
 - Anonymous polls publish no identities and store a per-poll keyed hash instead of
   a raw member ID. The host still handles the Discord interaction and controls the
   database; this is not cryptographic anonymity from the host.
-- `/community giveaway`: choose a prize, duration, 1–10 winners, minimum account
+- `/community` → **Giveaway**: choose a prize, duration, 1–10 winners, minimum account
   age, minimum membership age, required role and minimum XP level. Requirements
   are checked on entry and again when selecting winners. No money changes hands.
-- `/community giveaway_reroll ident`: excludes previous winners and appends a
-  public result. `/community giveaway_history ident` shows the saved draw history.
+- `/community` → **Giveaway Reroll** (ident): excludes previous winners and appends a
+  public result. `/community` → **Giveaway History** (ident) shows the saved draw history.
   Giveaways keep entrant IDs for rerolls; privacy deletion removes their entry.
-- `/community suggest text`: posts a suggestion with support/oppose buttons; one
-  replaceable vote per member. `/community suggestion_decide ident accepted reason`
+- `/community` → **Suggest** (text): posts a suggestion with support/oppose buttons; one
+  replaceable vote per member. `/community` → **Suggestion Decide** (ident accepted reason)
   publishes a staff decision and closes voting. The channel where suggestions are
   posted acts as the suggestions board.
 
@@ -149,13 +149,13 @@ the process crashes immediately after Discord accepts a result message.
 - `timezone`: an IANA server timezone such as `America/New_York` or `Europe/London`.
 - `daily_hour`: local hour 0–23, default 9.
 - `birthday_channel`: birthday announcement destination; enable `birthdays`.
-- `/community birthday date:07-23`: opt in; no birth year is stored. Run without a
+- `/community` → **Birthday** (date:07-23): opt in; no birth year is stored. Run without a
   date to opt out. Announcements use the **server** timezone. February 29 is only
   announced in leap years. No automatic birthday role is added.
 - `daily_channel`: question destination; enable `daily_questions`. A rotating local
   question is posted once per calendar day after daily_hour, with restart deduplication.
-- Enable `spotlight`; members explicitly opt in using `/community spotlight_optin`.
-  Staff use `/community spotlight channel` to feature a randomly selected consenting
+- Enable `spotlight`; members explicitly opt in using `/community` → **Spotlight Optin**.
+  Staff use `/community` → **Spotlight** (channel) to feature a randomly selected consenting
   current member with avatar, level and achievement count. It is a community
   appreciation post, not an assessment of popularity or behavior.
 

@@ -312,14 +312,17 @@ def register_suite(bot):
     async def favorite(i:discord.Interaction,command:str,remove:bool=False):
         name=command.strip().lstrip('/'); known={' '.join(c.qualified_name.split()) for c in bot.tree.walk_commands() if isinstance(c,app_commands.Command)}
         if name not in known: return await reply(i,'Use an existing slash command name, for example social reminders.')
-        profile=store.profile(i.guild_id,i.user.id); values=profile.get('favorites',[])
+        from .help_menu import normalize_favorites
+        profile=store.profile(i.guild_id,i.user.id); values=normalize_favorites(bot,profile.get('favorites',[]))
         if remove: values=[x for x in values if x!=name]
         elif name not in values:
             if len(values)>=20: return await reply(i,'Maximum twenty favorites.')
             values.append(name)
         profile['favorites']=values; store.save_profile(i.guild_id,i.user.id,profile); await reply(i,'Favorites saved. Command permissions still apply.')
     @social.command(name='favorites',description='Show your private list of favorite command names.')
-    async def favorites(i:discord.Interaction): await reply(i,'\n'.join('/'+x for x in store.profile(i.guild_id,i.user.id).get('favorites',[])) or 'No favorites yet. Use /social favorite.')
+    async def favorites(i:discord.Interaction):
+        from .help_menu import normalize_favorites
+        await reply(i,'\n'.join('/'+x for x in normalize_favorites(bot,store.profile(i.guild_id,i.user.id).get('favorites',[]))) or 'No favorites yet. Use /social favorite.')
     @social.command(name='lfg',description='Publish an expiring looking-for-group board with Join/Leave buttons.')
     async def lfg(i:discord.Interaction,game:app_commands.Range[str,1,80],availability:app_commands.Range[str,1,100],slots:app_commands.Range[int,2,10],description:app_commands.Range[str,1,500]):
         if not await service.need(i,'lfg'): return

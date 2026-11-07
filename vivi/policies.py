@@ -66,7 +66,7 @@ PRIVACY=[
   'opt out of supported leaderboards and disable or clear AI memory. Use /tools delete_data in the relevant server and confirm the request. '
   'It removes your profile, associated birthday and AI memory, and attributable votes from that server’s active database, and asks staff to review retained records. '
   'It does not automatically remove every transcript, upload, moderation record, reminder, previously published message, backup or record in another server. '
-  'Uploaded profile banners have a separate /profile banner_delete control. '
+  'Uploaded profile banners have a separate /profile → banner delete control. '
   'For access, correction, deletion or other applicable privacy requests, email ZyVelia using the contact details below. '
   'We may need to verify control of your Discord account without asking for passwords or tokens. '
   'Some records may require staff review or retention for safety, disputes or legal obligations; we will explain relevant limitations when responding. '

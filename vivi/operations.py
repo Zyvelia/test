@@ -234,7 +234,7 @@ def register_operations(bot):
         await i.response.defer(ephemeral=True)
         async with bot.ticket_lock:
             data=ops.ticket_meta(i.channel_id)
-            if data['claimed'] and data['claimed']!=i.user.id: return await reply(i,f'Already claimed by <@{data["claimed"]}>. They can release it, or a channel manager can use /ticket release.')
+            if data['claimed'] and data['claimed']!=i.user.id: return await reply(i,f'Already claimed by <@{data["claimed"]}>. They can release it, or a channel manager can use /ticket → release.')
             data['claimed']=i.user.id; ops.save_ticket_meta(i.guild_id,i.channel_id,data,actor=i.user.id)
         await reply(i,'Ticket claimed.'); await audit(bot,i.guild,f'Ticket {i.channel_id} claimed by {i.user.id}.')
 

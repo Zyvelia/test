@@ -40,7 +40,7 @@ def command_catalog(bot):
     rows=[]
     for command in bot.tree.walk_commands():
         if not isinstance(command,app_commands.Command) or command.qualified_name in REMOVED_COMMANDS:continue
-        root=command.qualified_name.split()[0];category=root if command.parent else 'basics'
+        root=command.qualified_name.split()[0];category=root if command.parent or root in getattr(bot,'menu_groups',{}) or root=='settings' else 'basics'
         rows.append(dict(name='/'+command.qualified_name,description=command.description,category=category,parameters=[dict(name=p.name,required=p.required,description=p.description) for p in command.parameters]))
     return sorted(rows,key=lambda row:(row['category'],row['name']))
 

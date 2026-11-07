@@ -289,7 +289,7 @@ class Community:
         ident=self.store.add_case(guild.id,user,moderator,action,reason)
         await audit(self.bot,guild,f'Case #{ident} · {action} · member {user} · moderator {moderator}: {reason}')
         if member and self.store.option(guild.id,'dm_explanations',False):
-            try: await member.send(f'**{guild.name}** · case #{ident}\nAction: {action}\nReason: {reason}\nYou may use /community appeal if enabled and you still share a server with this bot. If banned, use the server\'s external appeal contact.')
+            try: await member.send(f'**{guild.name}** · case #{ident}\nAction: {action}\nReason: {reason}\nYou may use /community → appeal if enabled and you still share a server with this bot. If banned, use the server\'s external appeal contact.')
             except discord.HTTPException: pass
         return ident
 
@@ -427,7 +427,7 @@ class Community:
         names=', '.join(f'<@{x}>' for x in pending['winners']) or 'No eligible entrants remain.'
         await channel.send(f'**Giveaway result #{record["id"]}** · {data["prize"]}\n{names}\n'
                            f'Draw #{len(data.get("draws",[]))+1} · requested by {pending["moderator"] or "automatic timer"}. '
-                           'The full draw history is available through /community giveaway_history.')
+                           'The full draw history is available through /community → giveaway history.')
         data.setdefault('draws',[]).append(pending); data.pop('pending_draw',None); data['closed']=True
         self.store.put_record(guild.id,'giveaway',data,record['id'])
 
@@ -807,7 +807,7 @@ def register_extra(bot):
         if not await service.need(i,'suggestions'): return
         await i.response.defer(ephemeral=True)
         ident=await service.publish(i,'suggestion',dict(text=text,author=i.user.id,closed=False),f'**Suggestion**\n{text}\n👍 0 · 👎 0')
-        await reply(i,f'Suggestion #{ident} posted. Staff can review it using /community suggestion_decide.')
+        await reply(i,f'Suggestion #{ident} posted. Staff can review it using /community → suggestion decide.')
 
     @community.command(name='suggestion_decide',description='Accept or decline a suggestion and publish a staff explanation.')
     @app_commands.checks.has_permissions(manage_messages=True)
@@ -847,7 +847,7 @@ def register_extra(bot):
     async def spotlight(i:discord.Interaction,channel:discord.TextChannel):
         if not await service.need(i,'spotlight'): return
         pool=[uid for uid,p in store.profiles(i.guild_id) if p['spotlight'] and i.guild.get_member(uid) and not i.guild.get_member(uid).bot]
-        if not pool: return await reply(i,'Nobody has opted in through /community spotlight_optin yet.')
+        if not pool: return await reply(i,'Nobody has opted in through /community → spotlight optin yet.')
         member=i.guild.get_member(secrets.choice(pool)); p=store.profile(i.guild_id,member.id)
         await i.response.defer(ephemeral=True)
         embed=discord.Embed(title='Community member spotlight',description=f'Celebrating {member.display_name}!\nLevel {p["xp"]//100} · {len(p["achievements"])} achievements',color=0x87CEEB)

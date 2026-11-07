@@ -267,7 +267,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         for row in store.db.execute('SELECT * FROM tickets WHERE guild=?',(gid,)):
             meta=self.service.operations.ticket_meta(row['channel'])
             tickets+=f'<tr><td>{row["channel"]}</td><td>{row["user"]}</td><td>{meta["claimed"] or "unclaimed"}</td><td>{html.escape(meta["priority"])}</td></tr>'
-        tickets+='</table><p>Staff use /ticket claim, release, priority and category inside the ticket.</p></details>'
+        tickets+='</table><p>Staff open /ticket inside the ticket channel, then choose Claim, Release, Priority or Category.</p></details>'
         subscriptions='<details><summary>Twitch, YouTube and GitHub notifications</summary>'
         for record in store.records(gid,'notification'):
             d=record['data']

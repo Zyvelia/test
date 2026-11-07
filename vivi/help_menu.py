@@ -14,8 +14,12 @@ CATEGORIES={
  'voice':('Music & voice',{'music','room'}),
  'notifications':('Notifications',{'notify'}),
  'moderation':('Moderation',{'mod','cases','warn','warnings','timeout','untimeout','kick','ban','purge'}),
- 'settings':('Server settings',{'admin','setup','role_button','ticket_panel','alias'}),
+ 'settings':('Server settings',{'settings','admin','setup','role_button','ticket_panel','alias'}),
  'tools':('Tools & privacy',set())}
+
+def normalize_favorites(bot,values):
+    groups=getattr(bot,'menu_groups',{})
+    return list(dict.fromkeys(name.split()[0] if name.split() and name.split()[0] in groups else name for name in values))
 
 def category(command):
     root=command.qualified_name.split()[0]
@@ -56,7 +60,7 @@ class HelpMenu(discord.ui.View):
                 commands.extend(root.walk_commands() if isinstance(root,app_commands.Group) else [root])
         return sorted([c for c in commands if isinstance(c,app_commands.Command) and visible(c,i)],key=lambda c:c.qualified_name)
     def favorites(self):
-        return self.bot.store.profile(self.guild,self.owner).get('favorites',[]) if self.guild is not None else []
+        return normalize_favorites(self.bot,self.bot.store.profile(self.guild,self.owner).get('favorites',[])) if self.guild is not None else []
     def rows(self,i):
         commands=self.commands(i)
         if self.section=='favorites':commands=[c for c in commands if c.qualified_name in self.favorites()]
@@ -117,7 +121,7 @@ class HelpMenu(discord.ui.View):
             name=selected.qualified_name;is_favorite=name in self.favorites()
             button=discord.ui.Button(label='Remove favorite' if is_favorite else 'Save favorite',row=3,style=discord.ButtonStyle.success)
             async def favorite(i):
-                profile=self.bot.store.profile(self.guild,self.owner);values=profile.get('favorites',[])
+                profile=self.bot.store.profile(self.guild,self.owner);values=normalize_favorites(self.bot,profile.get('favorites',[]))
                 if name in values:values.remove(name)
                 elif len(values)>=20:return await reply(i,'You already have 20 favorites. Remove one first.')
                 else:values.append(name)

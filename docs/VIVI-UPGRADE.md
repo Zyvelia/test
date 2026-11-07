@@ -118,12 +118,12 @@ configured by /setup. Existing tickets default to General/normal/unclaimed.
 
 Inside a ticket:
 
-- `/ticket claim` claims it; another staff member cannot steal the claim.
-- `/ticket release` releases your own claim; Manage Channels can override.
-- `/ticket priority value`: low, normal, high or urgent.
-- `/ticket category label`: move to a configured category **without syncing** its
+- `/ticket` → **Claim** claims it; another staff member cannot steal the claim.
+- `/ticket` → **Release** releases your own claim; Manage Channels can override.
+- `/ticket` → **Priority** (value): low, normal, high or urgent.
+- `/ticket` → **Category** (label): move to a configured category **without syncing** its
   permissions, so the ticket's private overwrites are preserved.
-- `/ticket status`: show metadata to the ticket owner or staff.
+- `/ticket` → **Status**: show metadata to the ticket owner or staff.
 
 Claims/priorities/categories persist through restart and appear in transcripts.
 Closing retains the existing transcript confirmation, then attempts to DM the owner

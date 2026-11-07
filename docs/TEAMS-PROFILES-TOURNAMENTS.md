@@ -142,7 +142,7 @@ Old game buttons cannot control a replacement session.
 
 ## Profile customization and starter cosmetics
 
-`/profile catalog` lists the free starter options:
+`/profile` → **Catalog** lists the free starter options:
 
 | Type | Included choices |
 | --- | --- |
@@ -153,46 +153,46 @@ Old game buttons cannot control a replacement session.
 | Layouts | `compact`, `detailed`, `gallery` |
 | Stickers | `star`, `moon`, `heart`, `flower`, `crown`, `sparkle` |
 
-Use `/profile customize background gradient font layout status` to change only the
+Use `/profile` → **Customize** (background gradient font layout status) to change only the
 fields you supply. `clear_status:true` clears your message. Statuses are limited to
 120 characters and checked against configured word/link filters. Manage Messages
-staff can `/profile moderate member reason` to clear a status, including copies in
+staff can `/profile` → **Moderate** (member reason) to clear a status, including copies in
 saved loadouts, with a moderation case.
 
-`/profile preview` privately previews your current appearance or temporary
-background/gradient/font/layout changes **without saving**. `/profile view member`
+`/profile` → **Preview** privately previews your current appearance or temporary
+background/gradient/font/layout changes **without saving**. `/profile` → **View** (member)
 and the existing `/economy profile` show the same privacy-aware PNG card.
 Existing equipped shop titles are still displayed when allowed by field visibility.
 
-`/profile sticker item x y` adds a sticker at an exact position on the 900×360 card.
+`/profile` → **Sticker** (item x y) adds a sticker at an exact position on the 900×360 card.
 Maximum six; `remove_slot` removes one by its 1-based position. Showcase slots are
-set with `/profile showcase slot kind value`: choose an earned `achievement`, the
+set with `/profile` → **Showcase** (slot kind value): choose an earned `achievement`, the
 ID of your own published library `creation`, or `clear`. Maximum three slots.
 Layouts may show fewer text lines when space is limited.
 
-`/profile visibility field public` controls XP, coins, achievements, showcases,
+`/profile` → **Visibility** (field public) controls XP, coins, achievements, showcases,
 status, avatar, uploaded banner or equipped title individually. `field:all` controls
 the whole profile. Hidden XP also removes you from the XP leaderboard. Owners can
 still preview their own private cards; hidden fields remain hidden in the preview.
 Visibility controls affect future bot views, not copies/images already shared.
 
-`/profile loadout action name` saves, applies, lists or deletes up to five cosmetic
+`/profile` → **Loadout** (action name) saves, applies, lists or deletes up to five cosmetic
 combinations. Loadouts include supported card appearance and the equipped shop
 cosmetic, but do not overwrite privacy settings. An applied shop item must still be
 owned; a revoked uploaded banner cannot be restored through an old loadout.
 
 ### Uploaded banners
 
-1. `/profile banner_submit attachment` accepts static PNG/JPEG/WebP images up to
+1. `/profile` → **Banner Submit** (attachment) accepts static PNG/JPEG/WebP images up to
    4 MiB and eight million pixels. Vivi normalizes them to 900×360 PNG and strips
    metadata. Maximum five submissions per member.
-2. `/profile banners` lists your submissions. Manage Messages staff can use
+2. `/profile` → **Banners** lists your submissions. Manage Messages staff can use
    `review_queue:true` to list the review queue.
-3. Another staff member uses `/profile banner_review banner_id action:preview`
+3. Another staff member uses `/profile` → **Banner Review** (banner_id action:preview)
    to inspect the image privately, then `approve` or `reject` with a reason.
    Staff cannot approve their own uploads. Existing approvals can be revoked.
-4. After approval, choose `/profile customize background:upload:BANNER_ID`.
-   Only the owner may use that upload. `/profile banner_delete` removes your file.
+4. After approval, choose `/profile` → **Customize** (background:upload:BANNER_ID).
+   Only the owner may use that upload. `/profile` → **Banner Delete** removes your file.
 
 Missing, deleted or revoked backgrounds fall back to a starter background. Uploaded
 banner visibility can be disabled separately. Local banner files are included in

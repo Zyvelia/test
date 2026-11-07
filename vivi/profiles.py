@@ -162,7 +162,7 @@ def register_profiles(bot):
     @group.command(name='view',description='View a profile card with its owner’s field visibility settings applied.')
     async def view(i:discord.Interaction,member:discord.Member=None):await cards.show(i,member)
     @group.command(name='catalog',description='List free starter backgrounds, gradients, fonts, layouts and stickers.')
-    async def catalog(i:discord.Interaction):await reply(i,'Free backgrounds: '+', '.join(BACKGROUNDS)+'\nGradients: '+', '.join(GRADIENTS)+' or #RRGGBB,#RRGGBB'+'\nFonts: '+', '.join(FONTS)+'\nLayouts: '+', '.join(LAYOUTS)+'\nStickers: '+', '.join(STICKERS)+'\nUse /profile customize, /profile sticker and /profile preview.')
+    async def catalog(i:discord.Interaction):await reply(i,'Free backgrounds: '+', '.join(BACKGROUNDS)+'\nGradients: '+', '.join(GRADIENTS)+' or #RRGGBB,#RRGGBB'+'\nFonts: '+', '.join(FONTS)+'\nLayouts: '+', '.join(LAYOUTS)+'\nStickers: '+', '.join(STICKERS)+'\nUse /profile → customize, /profile → sticker and /profile → preview.')
     @group.command(name='customize',description='Customize your card; omit fields to keep them, or use clear_status:true.')
     async def customize(i:discord.Interaction,background:str='',gradient:str='',font:str='',layout:str='',status:app_commands.Range[str,1,120]=None,clear_status:bool=False):
         if not await service.need(i,'profiles'):return
@@ -173,7 +173,7 @@ def register_profiles(bot):
         if clear_status:style['status']=''
         try:validate_style(style);clean_text(store,i.guild_id,style['status']);cards.banner(i.guild_id,i.user.id,style,True)
         except ValueError as error:return await reply(i,str(error))
-        p=store.profile(i.guild_id,i.user.id);p['card_style']=style;store.save_profile(i.guild_id,i.user.id,p);await reply(i,'Profile style saved. Use /profile preview to inspect it.')
+        p=store.profile(i.guild_id,i.user.id);p['card_style']=style;store.save_profile(i.guild_id,i.user.id,p);await reply(i,'Profile style saved. Use /profile → preview to inspect it.')
     @group.command(name='preview',description='Privately preview current or temporary appearance changes without saving.')
     async def preview(i:discord.Interaction,background:str='',gradient:str='',font:str='',layout:str=''):
         style=cards.style(i.guild_id,i.user.id)
@@ -255,7 +255,7 @@ def register_profiles(bot):
         if sum(r['data']['user']==i.user.id for r in store.records(i.guild_id,'profile_banner'))>=5:return await reply(i,'You now have five banner submissions. Delete one first.')
         ident=secrets.token_hex(16);path=store.path.parent/'profile-banners'/str(i.guild_id)/(ident+'.png');atomic_private(path,body)
         store.put_record(i.guild_id,'profile_banner',dict(user=i.user.id,status='pending',created=time.time(),history=[]),ident)
-        await reply(i,f'Banner `{ident}` submitted. A staff member must approve it with /profile banner_review. After approval select background `upload:{ident}`. Approved images become visible when you display your card.')
+        await reply(i,f'Banner `{ident}` submitted. A staff member must approve it with /profile → banner review. After approval select background `upload:{ident}`. Approved images become visible when you display your card.')
     @group.command(name='banners',description='List your banner submissions, or the review queue as Manage Messages staff.')
     async def banners(i:discord.Interaction,review_queue:bool=False):
         if review_queue and not i.user.guild_permissions.manage_messages:return await reply(i,'Manage Messages permission is required.')

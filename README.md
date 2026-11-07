@@ -252,3 +252,7 @@ upgrades, research and district progression. [Rules and previews](docs/IDLE-GAME
 
 `/help` now opens a private menu with categories, command search, argument details,
 pagination and saved favorites. [Help menu guide](docs/HELP-MENU.md).
+
+`/community`, `/ticket` and `/profile` now open private action menus instead of
+subcommand groups. `/settings` opens administrator feature switches and detailed
+settings connected to the dashboard. [Menu guide and migration](docs/FEATURE-MENUS.md).
