@@ -44,6 +44,16 @@ bash update.sh --check
 
 The first ZIP check may report that its installed revision is unknown. Running the updater compares actual files and records the installed commit.
 
+## Update from the Windows tray
+
+Right-click Vivi’s tray icon and choose **Update Vivi from GitHub**. If this tray started the bot, it stops that process tree, runs the same updater in the background and starts Vivi again only after a successful update. If Vivi was stopped, it stays stopped after updating. A bot launched elsewhere must be stopped in its own launcher/service first; the tray does not terminate unrelated processes.
+
+The tray shows **updating…** while work is in progress and disables conflicting start, stop, update and exit actions. Completion/failure notifications and a status row show the result. Choose **Open update log** to read `data/logs/update.log`; **Open logs** opens the containing folder. A failed update leaves the bot stopped for troubleshooting rather than restarting uncertain code. A successful restart skips a duplicate automatic-update check for that launch.
+
+To get this menu option in an older tray, exit the tray, run `update.bat` once, then reopen `tray.bat`. Changes to the tray UI itself load when the tray is reopened; the restarted bot always loads the updated bot code. If Windows reports package files in use during dependency installation, close the tray and use `update.bat` to finish the update.
+
+The controller’s process/update flows are covered by automated tests; the native tray UI and notification behavior require a Windows host.
+
 ## Automatic updates when starting
 
 Add this line to your local `.env`:

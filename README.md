@@ -277,4 +277,4 @@ Use `/embed` or the dashboard’s **Embed writer** to create, save, preview and 
 
 ### Updating without manual downloads
 
-Stop Vivi and run **update.bat** (Windows) or **`bash update.sh`** (Linux) to update directly from GitHub. Both ZIP copies and clean Git checkouts are supported. Your `.env` and `data` are preserved; archive updates back up replaced source files. Optional `AUTO_UPDATE=true` in `.env` installs updates before launcher startup. Old copies can install it with the one-time terminal bootstrap in the guide. See [updates, recovery and rollback](docs/UPDATING.md).
+Use the tray’s **Update Vivi from GitHub** option, or stop Vivi and run **update.bat** (Windows) or **`bash update.sh`** (Linux) to update directly from GitHub. Both ZIP copies and clean Git checkouts are supported. Your `.env` and `data` are preserved; archive updates back up replaced source files. Optional `AUTO_UPDATE=true` in `.env` installs updates before launcher startup. Old copies can install it with the one-time terminal bootstrap in the guide. See [updates, recovery and rollback](docs/UPDATING.md).
