@@ -15,7 +15,7 @@ const path=require('node:path');
   for(const route of ['/','/features','/commands','/support','/privacy','/terms','/dashboard']){const response=await page.goto(url+route);assert.equal(response.status(),200,route);assert.equal(await page.locator('h1').count(),1);}
   await page.goto(url);await page.waitForFunction(()=>getComputedStyle(document.body).backgroundColor!=='rgba(0, 0, 0, 0)');assert.equal(await page.locator('img[src="/assets/vivi-avatar.png"]').evaluate(img=>img.complete&&img.naturalWidth>0),true);
   await page.screenshot({path:path.join(root,'docs/assets/website-desktop.png')});
-  const catalog=await (await page.request.get(url+'/api/commands')).json();assert.equal(catalog.commands.length,185);assert(!catalog.commands.some(c=>['/admin faq_add','/admin faq_remove','/community faq'].includes(c.name)));
+  const catalog=await (await page.request.get(url+'/api/commands')).json();assert.equal(catalog.commands.length,187);assert(!catalog.commands.some(c=>['/admin faq_add','/admin faq_remove','/community faq'].includes(c.name)));
   const invite=await page.request.get(url+'/invite',{maxRedirects:0});const target=new URL(invite.headers().location);assert.equal(target.hostname,'discord.com');assert.equal(target.searchParams.get('client_id'),'1568121020047429775');assert.equal(target.searchParams.get('scope'),'bot applications.commands');
   assert.equal((await page.request.get(url+'/assets/.env')).status(),404);
   assert.equal((await page.request.get(url+'/login')).status(),503);

@@ -1,6 +1,6 @@
 # Possible persistent idle games
 
-These are proposals for a future addition, not implemented games. Each could
+Neon Rooftop Farm and Night Market Empire are now implemented; see [their guide](IDLE-GAMES.md). The remaining entries below are proposals for future additions. Each could
 have a per-member, per-server game profile containing buildings, companions,
 upgrades, collections and a last-progress timestamp. Returning to the game would
 calculate elapsed production and show a summary; it need not send constant

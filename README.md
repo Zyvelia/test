@@ -245,3 +245,7 @@ New arcade additions: **Blackjack and Go Fish** against Vivi or a consenting
 member, plus generated **Pipe Connector, Circuit Repair and Laser Locks** with
 6×6–14×14 maps, difficulty levels and saved progress.
 See [commands, rules and previews](docs/NEW-GAMES.md).
+
+**Idle worlds:** `/idle farm` opens Neon Rooftop Farm and `/idle market` opens
+Night Market Empire. Both include private saved profiles, automatic offline earnings,
+upgrades, research and district progression. [Rules and previews](docs/IDLE-GAMES.md).

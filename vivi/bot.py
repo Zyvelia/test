@@ -247,6 +247,8 @@ class ViviBot(commands.Bot):
         from .suite import register_suite
         from .game_hub import register_games
         register_suite(self); register_games(self)
+        from .idle_games import register_idle
+        register_idle(self)
         from .competitions import register_competitions
         from .guild_library import register_library
         from .invites import register_invites
