@@ -108,3 +108,7 @@ host configuration. Save each setting to apply it; unsaved typing is not sent.
 Open dashboards check the saved configuration every 30 seconds and when you return
 to the tab. A changed configuration reloads automatically when no form has edits.
 When you have unsaved edits, a notice offers to reload rather than discarding them.
+
+The website now includes a dedicated [feature manager](WEB-MODULES.md) at `/modules`.
+Select a server, browse module cards and enable/disable features directly. Configure
+links open the relevant detailed settings; switches share Discord's saved state.

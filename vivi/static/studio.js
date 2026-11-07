@@ -109,7 +109,7 @@
   syncOrder();if(panels)panels.addEventListener('click',syncOrder);if(panels)panels.addEventListener('drop',syncOrder);
   // Compare actual form values, including the editors' hidden JSON documents.
   const snapshot=form=>JSON.stringify([...new FormData(form)].map(([key,value])=>[key,typeof value==='string'?value:{name:value.name,size:value.size,lastModified:value.name?value.lastModified:0}]));
-  const initialForms=new Map([...document.querySelectorAll('form')].map(form=>[form,snapshot(form)]));let submitting=null;
+  const initialForms=new Map([...document.querySelectorAll('form:not([data-module-toggle]):not(#module-filters)')].map(form=>[form,snapshot(form)]));let submitting=null;
   initialForms.forEach((value,form)=>form.addEventListener('submit',()=>{submitting=form;setTimeout(()=>{submitting=null;},1000);}));
   window.addEventListener('beforeunload',event=>{if([...initialForms].some(([form,original])=>form!==submitting&&snapshot(form)!==original)){event.preventDefault();event.returnValue='';}});
 })();

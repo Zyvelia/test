@@ -26,8 +26,9 @@ from .studio import StudioDashboard
 
 from .website import Website,esc,WEB_SESSION
 from .webconfig import dashboard_endpoint
+from .module_manager import ModuleManager
 
-class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
+class Dashboard(ModuleManager,Website,StudioDashboard,AdvancedDashboard,DashboardTools):
     def __init__(self,service):
         self.service=service; self.sessions={}; self.states={}; self.runner=None
         self.client=os.getenv('DISCORD_CLIENT_ID','').strip()
@@ -36,7 +37,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         for key,value in dashboard_endpoint(self.redirect).items():setattr(self,key,value)
         self.website_application_id()
         self.app=web.Application(client_max_size=262144,middlewares=[self.security])
-        self.app.add_routes([web.get('/',self.site_home),web.get('/dashboard',self.index),web.get('/api/dashboard-state',self.dashboard_state),web.get('/login',self.login),web.get('/callback',self.callback),
+        self.app.add_routes([web.get('/',self.site_home),web.get('/dashboard',self.index),web.get('/modules',self.modules),web.get('/api/modules',self.module_state),web.get('/api/dashboard-state',self.dashboard_state),web.get('/login',self.login),web.get('/callback',self.callback),
                              web.post('/feature',self.feature),web.post('/logout',self.logout),
                              web.post('/setting',self.setting),web.post('/setup',self.setup),
                              web.post('/faq',self.faq),web.post('/ticket-category',self.ticket_category),
@@ -135,7 +136,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
             rows=[]
             for gid,g in guilds.items():
                 installed=self.service.bot.get_guild(int(gid)) is not None
-                href='/dashboard?'+urlencode({'guild':gid}) if installed else '/invite?'+urlencode({'guild_id':gid})
+                href='/modules?'+urlencode({'guild':gid}) if installed else '/invite?'+urlencode({'guild_id':gid})
                 initials=''.join(word[0] for word in g['name'].split()[:2]) or 'S'
                 rows.append(f'<article class="server-card"><div class="server-avatar">{esc(initials)}</div><h3>{esc(g["name"])}</h3><p>{"Vivi is ready to help." if installed else "Invite Vivi to get started."}</p><a class="btn {"btn-primary" if installed else "btn-ghost"}" href="{esc(href)}">{"Manage server" if installed else "Add Vivi"}</a></article>')
             return self.page('<h2>Your servers</h2><p>Choose where you want to make things happen.</p><div class="server-grid">'+(''.join(rows) or '<p>No servers with Administrator permission were found.</p>')+'</div>'+self.logout_form(session))
@@ -152,7 +153,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
                          f'<input type="hidden" name="guild" value="{guild}"><input type="hidden" name="feature" value="{feature}">'
                          f'<input type="hidden" name="enabled" value="{str(not on).lower()}"><b>{feature.replace("_"," ")}</b>: {"ON" if on else "OFF"} '
                          f'<button role="switch" aria-checked="{str(on).lower()}" aria-label="Toggle {feature.replace("_"," ")}">{"Disable" if on else "Enable"}</button><a class="module-configure" href="#module-settings" data-module-configure="{feature}">Customize →</a></form>')
-        return self.page(self.personalize(f'<h2>{name}</h2><p><a href="/dashboard">All servers</a></p><p>Manage Vivi for this server. Optional AI, voice and notification providers need local host configuration.</p><div data-dashboard-sync data-guild="{guild}" data-revision="{self.config_revision(guild)}"><p class="sync-status" role="status">Settings shared with Discord · checking for updates automatically.</p></div><details open><summary>Feature switches</summary><div class="module-grid">'+''.join(forms)+'</div></details>'+self.settings_forms(guild,session)+self.logout_form(session),guild,session))
+        return self.page(self.personalize(f'<h2>{name}</h2><p><a href="/dashboard">All servers</a> · <a class="btn btn-primary" href="/modules?guild={guild}">Manage features →</a></p><p>Manage Vivi for this server. Optional AI, voice and notification providers need local host configuration.</p><div data-dashboard-sync data-guild="{guild}" data-revision="{self.config_revision(guild)}"><p class="sync-status" role="status">Settings shared with Discord · checking for updates automatically.</p></div><details open><summary>Feature switches</summary><div class="module-grid">'+''.join(forms)+'</div></details>'+self.settings_forms(guild,session)+self.logout_form(session),guild,session))
 
     @staticmethod
     def logout_form(session):
@@ -165,7 +166,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         self.sessions={k:v for k,v in self.sessions.items() if v['expires']>now}
         if len(self.states)>=1000: raise web.HTTPTooManyRequests(text='Too many pending sign-ins. Try later.')
         state=secrets.token_urlsafe(32); verifier=secrets.token_urlsafe(48)
-        self.states[state]={'expires':now+600,'verifier':verifier}
+        self.states[state]={'expires':now+600,'verifier':verifier,'next':'/modules' if request.query.get('next')=='modules' else '/dashboard'}
         query=urlencode(dict(client_id=self.client,redirect_uri=self.redirect,response_type='code',scope='identify guilds',state=state))
         response=web.HTTPFound('https://discord.com/oauth2/authorize?'+query)
         response.set_cookie('vivi_oauth',verifier,max_age=600,httponly=True,samesite='Lax',path='/callback',secure=self.secure_cookies)
@@ -191,7 +192,7 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         self.sessions[sid]={'user_id':int(identity['id']),'token':data['access_token'],'csrf':secrets.token_urlsafe(32),
                             'profile':{key:identity.get(key) or '' for key in ('username','global_name','avatar')},
                             'expires':time.time()+min(int(data.get('expires_in',3600)),3600)}
-        response=web.HTTPFound('/dashboard')
+        response=web.HTTPFound('/modules' if pending.get('next')=='/modules' else '/dashboard')
         response.set_cookie('vivi_session',sid,max_age=3600,httponly=True,samesite='Lax',path='/',secure=self.secure_cookies)
         response.del_cookie('vivi_oauth',path='/callback')
         return response
@@ -206,7 +207,9 @@ class Dashboard(Website,StudioDashboard,AdvancedDashboard,DashboardTools):
         if feature not in FEATURES or value not in {'true','false'}: raise web.HTTPBadRequest(text='Invalid feature setting.')
         self.service.store.set_option(guild,'feature:'+feature,value=='true')
         if feature=='invite_tracking':self.service.invites.cache.pop(guild,None)
-        raise web.HTTPSeeOther('/dashboard?guild='+str(guild))
+        if 'application/json' in getattr(request,'headers',{}).get('Accept',''):
+            return web.json_response({'feature':feature,'enabled':value=='true','revision':self.config_revision(guild)})
+        raise web.HTTPSeeOther(('/modules' if data.get('return')=='modules' else '/dashboard')+'?guild='+str(guild))
 
     async def logout(self,request):
         session=self.session(request); data=await request.post()

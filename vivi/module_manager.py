@@ -1,0 +1,113 @@
+"""Authenticated website module catalog backed by the bot's shared feature switches."""
+from aiohttp import web
+from .features import FEATURES,enabled
+from .website import esc,icon
+
+GROUPS={
+ 'Protection':{'scam_images','automod','moderation','raid_protection','mention_protection','warning_thresholds','staff_reviews','appeals','reports'},
+ 'Community':{'polls','giveaways','suggestions','welcome','welcome_cards','goodbye','autorole','rules','roles','birthdays','spotlight','daily_questions','afk','timezone_directory'},
+ 'Games & profiles':{'games','xp','economy','profiles','competitions','teams','library','lfg'},
+ 'Support':{'tickets','ticket_tools'},
+ 'Voice & alerts':{'music','voice_rooms','notifications','instant_webhooks'},
+ 'Tools':{'ai','translation','reminders','scheduled_backups','custom_aliases','invite_tracking'}}
+DESCRIPTIONS={
+ 'polls':'Run timed button polls with optional anonymous voting.',
+ 'giveaways':'Run giveaways with eligibility rules and recorded rerolls.',
+ 'suggestions':'Collect member suggestions and votes with staff decisions.',
+ 'scam_images':'Delete member attachments matching administrator-supplied scam-image references.',
+ 'automod':'Filter spam, blocked words and suspicious links using your server rules.',
+ 'moderation':'Enable moderation actions and case records for your staff team.',
+ 'raid_protection':'Detect join surges and apply your configured raid response.',
+ 'mention_protection':'Limit excessive member, role and everyone mentions.',
+ 'warning_thresholds':'Apply configured consequences when warning thresholds are reached.',
+ 'staff_reviews':'Collect independent staff-conduct and blocklist appeal reviews.',
+ 'appeals':'Let members privately appeal their own moderation cases.',
+ 'reports':'Let members privately report concerns to the moderation team.',
+ 'welcome':'Greet new members in the configured welcome channel.',
+ 'welcome_cards':'Include illustrated member cards in welcome messages.',
+ 'goodbye':'Post departure messages in your chosen channel.',
+ 'autorole':'Assign a configured safe role to new members.',
+ 'rules':'Offer a persistent rules acceptance button with an optional safe role.',
+ 'roles':'Allow supported self-assignable role buttons and dropdowns.',
+ 'birthdays':'Announce birthdays for members who opt in.',
+ 'spotlight':'Celebrate members who consent to community spotlights.',
+ 'daily_questions':'Post scheduled questions in your chosen channel.',
+ 'afk':'Let members set an AFK status with controlled mention replies.',
+ 'timezone_directory':'Share local times for members who explicitly opt in.',
+ 'games':'Enable the arcade, card opponents, generated puzzles and persistent idle worlds.',
+ 'xp':'Award activity XP with cooldowns and optional per-channel rules.',
+ 'economy':'Enable fictional coins, achievements and cosmetic shop features.',
+ 'profiles':'Enable custom profile cards and the live appearance editor.',
+ 'competitions':'Manage tournament brackets, matches and recorded results.',
+ 'teams':'Maintain rosters, recruitment posts and team membership.',
+ 'library':'Organize community builds and strategy guides.',
+ 'lfg':'Publish expiring looking-for-group boards with join controls.',
+ 'tickets':'Let members open private support channels.',
+ 'ticket_tools':'Add ticket claiming, priorities, category controls and feedback.',
+ 'music':'Play supported uploaded audio with voice queue controls.',
+ 'voice_rooms':'Create and manage temporary member voice rooms.',
+ 'notifications':'Post configured Twitch, YouTube, GitHub and Steam updates.',
+ 'instant_webhooks':'Accept signed incoming events through the host-configured webhook listener.',
+ 'ai':'Offer optional AI assistance in approved channels using the host’s provider.',
+ 'translation':'Translate text on request through a configured provider.',
+ 'reminders':'Let members create personal reminders delivered by Vivi.',
+ 'scheduled_backups':'Create scheduled configuration backups using your retention settings.',
+ 'custom_aliases':'Register configured informational slash-command shortcuts.',
+ 'invite_tracking':'Estimate which invite brought a member into the server.'}
+COMMAND_TERMS={'competitions':'competition','profiles':'profile','roles':'role','polls':'poll','giveaways':'giveaway','suggestions':'suggest','birthdays':'birthday','timezone_directory':'timezone','reminders':'remind','invite_tracking':'invite','translation':'translate'}
+HINTS={
+ 'games':'Arcade: /games · Cards: /cards · Puzzles: /puzzles · Idle worlds: /idle.',
+ 'scam_images':'Add reference images in /settings → Setup & backups. Exact matching is the default.',
+ 'welcome':'Choose a welcome channel in Server setup.',
+ 'welcome_cards':'Also enable Welcome and choose a welcome channel.',
+ 'goodbye':'Choose a goodbye channel and message.',
+ 'autorole':'Configure server channels and a safe role below Vivi.',
+ 'rules':'Configure rules text and an optional safe acceptance role.',
+ 'birthdays':'Choose an announcement channel and server timezone.',
+ 'daily_questions':'Choose a channel, timezone and posting hour.',
+ 'tickets':'Configure a private support category, staff role and log channel.',
+ 'ticket_tools':'Also enable Tickets and configure its support channels.',
+ 'voice_rooms':'Choose a voice lobby and a category for temporary rooms.',
+ 'music':'The host needs working voice dependencies and FFmpeg.',
+ 'notifications':'Add subscriptions and destination channels in notification settings.',
+ 'instant_webhooks':'The host must configure the signed webhook listener and HTTPS endpoint.',
+ 'ai':'The host must configure a provider. Add approved channels and usage limits.',
+ 'translation':'The host must configure a translation provider.',
+ 'scheduled_backups':'Choose a backup interval and retention count.',
+ 'custom_aliases':'Add shortcut names and their supported targets.',
+ 'raid_protection':'Choose a join threshold, response and alert channel.'}
+CONFIGURABLE={'scam_images','automod','moderation','raid_protection','mention_protection','warning_thresholds','staff_reviews','welcome','welcome_cards','goodbye','autorole','rules','birthdays','daily_questions','lfg','tickets','ticket_tools','voice_rooms','notifications','instant_webhooks','ai','scheduled_backups','custom_aliases','xp'}
+
+def group_for(key):return next((name for name,keys in GROUPS.items() if key in keys),'Tools')
+def title(key):return {'ai':'AI assistance','xp':'XP levels','afk':'AFK status','lfg':'Looking for group','automod':'Automatic moderation'}.get(key,key.replace('_',' ').title())
+
+class ModuleManager:
+    async def module_state(self,request):
+        try:gid=int(request.query.get('guild',''))
+        except ValueError:raise web.HTTPBadRequest(text='Invalid server ID.')
+        await self.authorize(request,gid)
+        return web.json_response({'features':{key:enabled(self.service.store,gid,key) for key in FEATURES if key!='faq'},'revision':self.config_revision(gid)})
+
+    async def modules(self,request):
+        if not request.cookies.get('vivi_session'):
+            return self.site_shell('<div class="container"><section class="error-card"><h1>Your server. Your features.</h1><p>Sign in with Discord to choose a server and manage Vivi’s modules.</p><a class="btn btn-primary" href="/login?next=modules">Sign in with Discord</a></section></div>','Manage features','features')
+        if not request.query.get('guild'):return await self.index(request)
+        try:gid=int(request.query['guild'])
+        except ValueError:raise web.HTTPBadRequest(text='Invalid server ID.')
+        session=await self.authorize(request,gid);guild=self.service.bot.get_guild(gid)
+        query=request.query.get('search','')[:100];group=request.query.get('category','all');state=request.query.get('state','all')
+        if group not in GROUPS:group='all'
+        if state not in {'enabled','disabled'}:state='all'
+        cards=[];count=0;total=0
+        for key in sorted(FEATURES,key=lambda key:(list(GROUPS).index(group_for(key)),title(key))):
+            if key=='faq':continue  # Retained legacy data has no active FAQ command module.
+            total+=1;on=enabled(self.service.store,gid,key);category=group_for(key);description=DESCRIPTIONS.get(key,'Enable '+title(key)+' for this server.')
+            matches=(group=='all' or category==group) and (state=='all' or on==(state=='enabled')) and all(term in (title(key)+' '+description+' '+key+' '+category).lower() for term in query.lower().split())
+            if matches:count+=1
+            symbol='shield' if category=='Protection' else 'game' if category=='Games & profiles' else 'ticket' if category=='Support' else 'bell' if category=='Voice & alerts' else 'users' if category=='Community' else 'settings'
+            configure=f'<a class="text-link" href="/dashboard?guild={gid}&module={key}#module-settings">Configure →</a>' if key in CONFIGURABLE else f'<a class="text-link" href="/commands?search={COMMAND_TERMS.get(key,key)}">View commands →</a>'
+            cards.append(f'<article class="feature-module" data-feature-module="{key}" data-group="{esc(category)}" data-enabled="{str(on).lower()}"'+(' hidden' if not matches else '')+f'><div class="module-heading"><span class="module-symbol">{icon(symbol)}</span><span class="module-state" data-module-state>{"Enabled" if on else "Disabled"}</span></div><span class="tag">{esc(category)}</span><h3>{esc(title(key))}</h3><p class="module-description">{esc(description)}</p><p class="module-hint">{esc(HINTS.get(key,""))}</p><div class="module-bottom">{configure}<form action="/feature" method="post" data-module-toggle>'+self.hidden(session,gid)+f'<input type="hidden" name="feature" value="{key}"><input type="hidden" name="enabled" value="{str(not on).lower()}"><input type="hidden" name="return" value="modules"><button type="submit" role="switch" aria-checked="{str(on).lower()}" aria-label="Toggle {esc(title(key))}">{"Disable" if on else "Enable"}</button></form></div><span class="module-save" role="status" aria-live="polite"></span></article>')
+        options='<option value="all">All categories</option>'+''.join(f'<option value="{esc(name)}"'+(' selected' if name==group else '')+f'>{esc(name)}</option>' for name in GROUPS)
+        states=''.join(f'<option value="{value}"'+(' selected' if value==state else '')+f'>{label}</option>' for value,label in [('all','All modules'),('enabled','Enabled'),('disabled','Disabled')])
+        content=f'<div data-module-manager data-guild="{gid}"><div class="modules-intro"><div><span class="eyebrow">Your server modules</span><h2>{esc(guild.name)}</h2><p>Choose what Vivi does here. Changes save directly to the bot’s server configuration.</p></div><a class="btn btn-ghost" href="/dashboard?guild={gid}">Detailed settings →</a></div><form action="/modules" method="get" class="module-filters" id="module-filters"><input type="hidden" name="guild" value="{gid}"><label>Find a module<input type="search" name="search" maxlength="100" value="{esc(query)}" placeholder="Welcome, moderation, games…"></label><label>Category<select name="category">{options}</select></label><label>Status<select name="state">{states}</select></label><button class="btn" type="submit">Filter</button></form><p id="module-manager-status" role="status" aria-live="polite"></p><p class="module-count" role="status" id="module-count">{count} of {total} modules</p><p class="module-manager-note">Enable switches control availability. Modules with setup notes also need their channels, roles or host providers configured.</p><div class="feature-module-grid">'+''.join(cards)+'</div><p id="module-empty"'+(' hidden' if count else '')+'>No modules match these filters.</p></div>'
+        return self.page(content)

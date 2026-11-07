@@ -260,3 +260,8 @@ settings connected to the dashboard. [Menu guide and migration](docs/FEATURE-MEN
 New tools: **known scam-image deletion** using administrator-supplied image hashes,
 a **live profile editor** with unsaved previews, and visible **dashboard search across
 settings modules**. [Setup and limits](docs/IMAGE-FILTER-AND-PROFILE-EDITOR.md).
+
+Manage features directly on the website: **Features → Manage your server’s
+features**, sign in, choose your server, then enable modules and open their settings.
+The new module manager has categories, search and switches that sync with Discord.
+[Website feature manager guide](docs/WEB-MODULES.md).

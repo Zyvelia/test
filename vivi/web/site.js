@@ -52,10 +52,10 @@
     }
     setInterval(check,30000);window.addEventListener('focus',check);document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
     const settingPanel=document.getElementById('module-settings');
-    const prefixes={scam_images:['scam_image_'],welcome:['welcome','autorole'],goodbye:['goodbye'],roles:['rules','autorole'],automod:['blocked','spam','dm_'],moderation:['warning','dm_','review'],birthdays:['birthday','timezone','daily_hour'],daily_questions:['daily','timezone'],ai:['ai_'],raid_protection:['raid_'],mention_protection:['mention_'],warning_thresholds:['warning_'],voice_rooms:['voice_'],scheduled_backups:['backup_'],ticket_tools:['review'],tickets:['review'],xp:['language'],translation:['language']};
+    const prefixes={scam_images:['scam_image_'],welcome:['welcome','autorole'],autorole:['autorole'],rules:['rules_'],staff_reviews:['review_','reviewer_'],lfg:['lfg_'],goodbye:['goodbye'],roles:['rules','autorole'],automod:['blocked','spam','dm_'],moderation:['warning','dm_','review'],birthdays:['birthday','timezone','daily_hour'],daily_questions:['daily','timezone'],ai:['ai_'],raid_protection:['raid_'],mention_protection:['mention_'],warning_thresholds:['warning_'],voice_rooms:['voice_'],scheduled_backups:['backup_'],ticket_tools:['review'],tickets:['review'],xp:['language'],translation:['language']};
     document.querySelectorAll('[data-module-configure]').forEach(link=>link.addEventListener('click',event=>{
       event.preventDefault();const feature=link.dataset.moduleConfigure;
-      const specialized={custom_aliases:'Custom command aliases',xp:'Per-channel XP',notifications:'Twitch',instant_webhooks:'Twitch',tickets:'Ticket categories',ticket_tools:'Ticket categories'};
+      const specialized={welcome_cards:'Dashboard studio',custom_aliases:'Custom command aliases',xp:'Per-channel XP',notifications:'Twitch',instant_webhooks:'Twitch',tickets:'Ticket categories',ticket_tools:'Ticket categories'};
       const target=specialized[feature]&&Array.from(document.querySelectorAll('.dashboard-content details')).find(panel=>panel.querySelector('summary')?.textContent.includes(specialized[feature]));
       const panel=target||settingPanel;if(!panel)return;panel.open=true;
       if(panel===settingPanel){
@@ -66,5 +66,44 @@
       }
       panel.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
     }));
+    const desiredModule=new URLSearchParams(location.search).get('module');
+    if(desiredModule)document.addEventListener('DOMContentLoaded',()=>{const link=[...document.querySelectorAll('[data-module-configure]')].find(link=>link.dataset.moduleConfigure===desiredModule);link?.click();});
+  }
+  const manager=document.querySelector('[data-module-manager]');
+  if(manager){
+    const filter=document.getElementById('module-filters'),search=filter.elements.search,category=filter.elements.category,state=filter.elements.state,cards=[...manager.querySelectorAll('[data-feature-module]')],status=document.getElementById('module-manager-status');let epoch=0,polling=false;
+    function render(){
+      const terms=search.value.toLowerCase().trim().split(/\s+/).filter(Boolean);let count=0;
+      cards.forEach(card=>{const show=(category.value==='all'||card.dataset.group===category.value)&&(state.value==='all'||(state.value==='enabled')===(card.dataset.enabled==='true'))&&terms.every(term=>(card.dataset.featureModule.replaceAll('_',' ')+' '+card.textContent).toLowerCase().includes(term));card.hidden=!show;if(show)count++;});
+      document.getElementById('module-count').textContent=count+' of '+cards.length+' modules';document.getElementById('module-empty').hidden=count!==0;
+      const query=new URLSearchParams({guild:manager.dataset.guild});if(search.value)query.set('search',search.value);if(category.value!=='all')query.set('category',category.value);if(state.value!=='all')query.set('state',state.value);history.replaceState(null,'','/modules?'+query);
+    }
+    function apply(card,on){
+      card.querySelector('.module-save').textContent='';card.dataset.enabled=String(on);card.querySelector('[data-module-state]').textContent=on?'Enabled':'Disabled';const form=card.querySelector('form'),button=form.querySelector('button');form.elements.enabled.value=String(!on);button.setAttribute('aria-checked',String(on));button.textContent=on?'Disable':'Enable';
+    }
+    filter.addEventListener('submit',event=>{event.preventDefault();render();});search.addEventListener('input',render);category.addEventListener('change',render);state.addEventListener('change',render);
+    manager.querySelectorAll('[data-module-toggle]').forEach(form=>form.addEventListener('submit',async event=>{
+      event.preventDefault();const button=form.querySelector('button');if(button.disabled)return;epoch++;button.disabled=true;button.setAttribute('aria-busy','true');const card=form.closest('[data-feature-module]'),feedback=card.querySelector('.module-save');feedback.textContent='Saving…';
+      try{
+        const response=await fetch('/feature',{method:'POST',headers:{Accept:'application/json'},body:new URLSearchParams(new FormData(form)),credentials:'same-origin'});
+        if(!response.ok)throw new Error(response.status===401||response.status===403?'Your session expired or your permissions changed. Sign in again.':'Could not save this module. Try again.');
+        const data=await response.json();apply(card,data.enabled);feedback.textContent='Saved';status.textContent=card.querySelector('h3').textContent+' '+(data.enabled?'enabled':'disabled')+' · saved to your server.';render();
+      }catch(error){feedback.textContent=error.message;status.textContent=error.message;}
+      finally{epoch++;button.disabled=false;button.removeAttribute('aria-busy');}
+    }));
+    async function refresh(){
+      if(polling||document.hidden||manager.querySelector('[aria-busy=true]'))return;polling=true;const started=epoch;
+      try{
+        const response=await fetch('/api/modules?guild='+encodeURIComponent(manager.dataset.guild),{cache:'no-store'});
+        if(!response.ok)throw new Error(response.status===401||response.status===403?'Your session expired or permissions changed. Sign in again.':'Module sync is temporarily unavailable.');
+        const data=await response.json();if(started!==epoch)return;let changed=false;
+        cards.forEach(card=>{const on=data.features[card.dataset.featureModule];if(typeof on==='boolean'&&card.dataset.enabled!==String(on)){apply(card,on);changed=true;}});if(changed){status.textContent='Module switches updated from Discord or another dashboard.';render();}
+      }catch(error){status.textContent=error.message;}finally{polling=false;}
+    }
+    setInterval(refresh,30000);window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
+    const rail=document.querySelector('[data-dashboard-sections]');if(rail){
+      [...category.options].forEach(option=>{const link=document.createElement('a'),query=new URLSearchParams({guild:manager.dataset.guild});if(option.value!=='all')query.set('category',option.value);link.href='/modules?'+query;link.textContent=option.textContent;link.addEventListener('click',event=>{event.preventDefault();category.value=option.value;render();});rail.append(link);});
+    }
+    render();
   }
 })();
