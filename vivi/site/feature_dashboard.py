@@ -68,6 +68,8 @@ class FeatureDashboard:
         content+='<nav class="related-modules" aria-label="Related settings"><strong>'+E(family[0])+'</strong>'+''.join(f'<a href="/configure?guild={gid}&module={key}"'+(' aria-current="page"' if key==feature else '')+f'>{E(title(key))}</a>' for key in family[1])+'</nav>'
         content+=f'<div data-dashboard-sync data-guild="{gid}" data-revision="{self.config_revision(gid)}"><p class="sync-status" role="status">Settings shared with Discord. Checking for updates automatically.</p></div>'
         if request.query.get('saved')=='yes':content+='<p role="status">Settings saved. New events use these settings immediately.</p>'
+        if feature in {'notifications','instant_webhooks'}:content+=self.test_controls(gid,session,'notifications')
+        if feature in {'roles','autorole','rules'}:content+=self.test_controls(gid,session,'roles')
         if feature in {'welcome','goodbye'}:
             content+=self.message_composer(gid,session,feature)
             if feature=='welcome':content+='<section id="welcome-card-design"><h3>Welcome card design</h3><p>Cards are part of Welcome. Enable them with Add a welcome card above; turning Welcome off pauses both messages and cards.</p>'+self.related_editors(gid,session,feature)+'</section>'
@@ -106,7 +108,7 @@ class FeatureDashboard:
         avatar=session.get('profile',{}).get('avatar','');uid=str(session.get('user_id',''))
         member_avatar=f'https://cdn.discordapp.com/avatars/{uid}/{avatar}.png?size=256' if re.fullmatch(r'[0-9]{1,20}',uid) and re.fullmatch(r'(?:a_)?[a-f0-9]{32}',avatar) else 'https://cdn.discordapp.com/embed/avatars/0.png'
         documents={row['id']:row['data']['document'] for row in store.records(gid,embed_writer.KIND)};documents['']=snapshot
-        result='<div class="message-workspace message-designer"><form action="/messages" method="post" id="message-composer">'+self.hidden(session,gid)+f'<input type="hidden" name="kind" value="{kind}">'
+        result=f'<div class="message-workspace message-designer"><form data-draft-owner="{session["user_id"]}" action="/messages" method="post" id="message-composer">'+self.hidden(session,gid)+f'<input type="hidden" name="kind" value="{kind}">'
         result+=f'<header class="composer-header"><div><span class="eyebrow">Make an entrance</span><h3>{kind.title()} message</h3><span id="message-draft-state">No unsaved changes</span><p>Write it once. Make every {"hello" if kind=="welcome" else "goodbye"} feel personal.</p></div><label class="composer-switch"><input type="checkbox" name="enabled" value="yes"'+(' checked' if enabled(store,gid,kind) else '')+'><span>Automatic messages</span></label></header>'
         result+='<section class="composer-section"><label>Post in channel '+self.select('channel',[(0,'Choose a channel')]+[(c.id,'#'+c.name) for c in guild.text_channels],channel)+'</label><p class="field-hint">Used for automatic messages and anything you send from this editor.</p></section>'
         result+='<fieldset class="message-format"><legend>Message format</legend>'
@@ -127,7 +129,9 @@ class FeatureDashboard:
         result+=f'<div id="message-preview-data" hidden data-documents="{E(json.dumps(documents))}" data-server="{E(guild.name)}" data-count="{E(getattr(guild,"member_count",0) or 0)}" data-member-avatar="{E(member_avatar)}" data-server-icon="{E(str(guild.icon.url) if getattr(guild,"icon",None) else "")}"></div>'
         result+='<footer class="composer-actions"><div><button name="action" value="save">Save settings</button><button type="button" id="message-send">Send to Discord →</button><button class="composer-preview-button" name="action" value="preview">Expanded preview</button></div><p>Save updates future automatic messages. Send posts your current draft once.</p><p id="message-send-status" role="status" aria-live="polite"></p></footer></form>'
         result+='<aside class="message-preview-panel"><div class="preview-heading"><h3>Live preview</h3><span class="preview-badge">LIVE</span></div><p class="preview-channel" id="message-preview-channel"></p><div class="discord-preview-shell"><div class="preview-author"><img src="/assets/vivi-avatar.png" alt="" width="36" height="36"><strong>Vivi</strong><span>APP</span><small>Sample message</small></div><article class="embed-preview" id="message-live-preview" aria-live="polite"></article></div><p class="field-hint">Preview uses a sample member. Sending uses your Discord profile, without pinging anyone.</p><details class="message-help"><summary>Before you turn it on</summary><p>Vivi needs View Channel and Send Messages, plus Embed Links for embeds or Attach Files for cards. You can save a draft while automatic messages are off.</p></details></aside></div>'
+        if kind=='welcome':result+='<button type="button" id="message-test-welcome">Send sample welcome</button><p class="field-hint">Posts this draft using your profile, after destination confirmation. No settings are changed.</p>'
         result+='<dialog id="confirm-message-send" aria-labelledby="confirm-message-title"><span class="eyebrow">One message, right now</span><h2 id="confirm-message-title">Send to Discord?</h2><p id="confirm-message-destination"></p><p>The member placeholders will use your profile. This will not save your settings or enable automatic messages.</p><div class="send-dialog-actions"><button type="button" id="confirm-message-cancel">Cancel</button><button type="button" id="confirm-message-submit">Confirm send</button></div></dialog><script src="/assets/message-preview.js?v='+asset_stamp("message-preview.js")+'" defer></script>'
+        result+='<script src="/assets/draft-recovery.js?v='+asset_stamp('draft-recovery.js')+'" defer></script>'
         return result
 
     async def save_messages(self,request):
@@ -165,7 +169,8 @@ class FeatureDashboard:
                 if kind=='welcome' and channel_id:store.db.execute('UPDATE settings SET welcome=? WHERE guild=?',(channel_id,gid))
                 store.log_config(gid,kind+' message composer',before)
         except (ValueError,TypeError) as error:raise web.HTTPBadRequest(text=str(error))
-        raise web.HTTPSeeOther(f'/configure?guild={gid}&module={kind}&saved=yes')
+        nonce=str(data.get('draft_nonce',''));receipt='&draft_saved='+nonce if re.fullmatch(r'[a-f0-9]{32}',nonce) else ''
+        raise web.HTTPSeeOther(f'/configure?guild={gid}&module={kind}&saved=yes'+receipt)
 
     async def send_draft_message(self,request,data,session,gid,guild,kind,mode,text,snapshot,cards,channel_id,appearance):
         if data.get('confirm_send')!='yes':raise ValueError('Confirm the destination before sending.')

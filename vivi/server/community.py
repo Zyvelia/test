@@ -156,7 +156,7 @@ class DeleteView(discord.ui.View):
                 data['members'].remove(self.user); self.service.store.put_record(self.guild,'lfg',data,record['id'])
             elif record['kind']=='report' and data.get('target')==self.user:
                 data['target']=0; self.service.store.put_record(self.guild,record['kind'],data,record['id'])
-        ident=self.service.store.put_record(self.guild,'privacy',dict(author=self.user,text='Delete remaining identifiable moderation and retained records',status='pending'))
+        ident=self.service.store.put_record(self.guild,'privacy',dict(author=self.user,text='Delete remaining identifiable moderation and retained records',status='pending',created_at=timestamp()))
         await audit(self.service.bot,i.guild,f'Privacy request #{ident}. Privacy deletion request from member {self.user}. Staff: review transcripts, logs, closed giveaways, suggestions, backups, and other retained text for this member.')
         await reply(i,'Deleted your profile, birthday, AI memory and attributable votes from the active database. Staff were asked to review moderation records, transcripts, public messages and backups. Discord bans/roles are unchanged. Open anonymous poll ballots were removed too; already published aggregate counts remain.')
         self.stop()
@@ -452,6 +452,9 @@ class Community:
         await self.productivity.tick()
         await self.voice.maintenance()
         now=timestamp()
+        if now-getattr(self,'_retention_at',0)>=600:
+            from vivi.core.privacy import cleanup
+            cleanup(self.store,now);self._retention_at=now
         for key,recent in list(self.spam.items()):
             if not recent or now-recent[-1]>60: self.spam.pop(key,None)
         self.automod_last={k:v for k,v in self.automod_last.items() if now-v<60}
@@ -678,7 +681,8 @@ def register_extra(bot):
     @mod.command(name='inbox',description='List pending private reports, appeals, and privacy requests for staff.')
     async def inbox(i:discord.Interaction):
         if not await permission(i,'moderate_members'): return
-        records=[r for r in store.records(i.guild_id) if r['kind'] in {'report','appeal','privacy'} and r['data'].get('status')=='pending']
+        admin=i.user.guild_permissions.administrator or i.user.id==i.guild.owner_id
+        records=[r for r in store.records(i.guild_id) if r['kind'] in ({'report','appeal','privacy'} if admin else {'report','appeal'}) and r['data'].get('status') in {'pending','reviewing'}]
         await reply(i,('\n'.join(f'{r["kind"]} #{r["id"]} · author {r["data"]["author"]} · {r["data"].get("text","")[:70]}' for r in records[:15]))[:1900] or 'No pending requests.')
 
     @mod.command(name='review',description='Review an appeal or report and record a staff response.')
@@ -690,6 +694,7 @@ def register_extra(bot):
             await administrator(i)
             if accepted: store.erase_moderation(i.guild_id,record['data']['author'])
         data=record['data']; data.update(status='accepted' if accepted else 'declined',response=response,reviewer=i.user.id)
+        if record['kind']=='privacy':data.update(resolved_at=timestamp(),reviewed_at=dt.datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S'),review_note=response)
         store.put_record(i.guild_id,record['kind'],data,ident)
         await i.response.defer(ephemeral=True)
         try:

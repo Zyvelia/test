@@ -17,7 +17,7 @@
   form.elements.text.required=mode==='text';form.elements.channel.setCustomValidity(form.elements.enabled.checked&&form.elements.channel.value==='0'?'Choose a channel before enabling automatic messages.':'');document.querySelectorAll('[data-message-mode]').forEach(panel=>{panel.hidden=panel.dataset.messageMode!==mode;});
   document.querySelector('#message-character-count').textContent=form.elements.text.value.length+' / 1,800';
   const channel=form.elements.channel.selectedOptions[0]?.textContent||'Choose a channel';document.querySelector('#message-preview-channel').textContent=form.elements.channel.value==='0'?'Choose a destination to send this message':channel;
-  const doc=selectedEmbed(),validEmbed=!!doc?.name;form.querySelector('button[value="save"]').disabled=sending||(mode==='embed'&&!validEmbed);send.disabled=sending||form.elements.channel.value==='0'||(mode==='embed'&&!validEmbed);
+  const doc=selectedEmbed(),validEmbed=!!doc?.name;form.querySelector('button[value="save"]').disabled=sending||(mode==='embed'&&!validEmbed);send.disabled=sending||form.elements.channel.value==='0'||(mode==='embed'&&!validEmbed);const sample=document.querySelector('#message-test-welcome');if(sample)sample.disabled=send.disabled;
   document.querySelector('#embed-choice-status').textContent=mode==='embed'?(validEmbed?'Using “'+doc.name+'”':'Choose an embed to finish this message.') : '';
   preview.replaceChildren();preview.classList.toggle('is-text-message',mode==='text');
   const text=document.createElement('p');
@@ -55,6 +55,7 @@
   if(sending||!form.reportValidity())return;
   document.querySelector('#confirm-message-destination').textContent='Post this '+form.elements.kind.value+' message in '+form.elements.channel.selectedOptions[0].textContent+'?';dialog.showModal();
  });
+ document.querySelector('#message-test-welcome')?.addEventListener('click',()=>send.click());
  document.querySelector('#confirm-message-cancel').addEventListener('click',()=>dialog.close());
  confirm.addEventListener('click',async()=>{
   if(sending)return;sending=true;confirm.disabled=true;dialog.close();status.textContent='Sending your message…';draw();

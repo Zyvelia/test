@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "test": "node studio.test.cjs",
-    "test:website": "node website.test.cjs"
+    "test:website": "node website.test.cjs",
+    "test:care": "node care.test.cjs"
   },
   "devDependencies": {
     "jsdom": "26.1.0",

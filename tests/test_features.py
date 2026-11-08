@@ -325,6 +325,17 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(discord.app_commands.MissingPermissions):
             await command.checks[0](i)
 
+    async def test_moderator_inbox_hides_privacy_requests_but_admin_can_review(self):
+        self.store.put_record(1,'privacy',dict(author=20,text='PRIVATE_DELETION_REQUEST',status='pending'))
+        self.store.put_record(1,'report',dict(author=20,text='MODERATION_REPORT',status='pending'))
+        self.user.guild_permissions=discord.Permissions(moderate_members=True)
+        interaction=self.i();await self.command('mod','inbox')(interaction)
+        message=interaction.followup.send.call_args.args[0]
+        self.assertIn('MODERATION_REPORT',message);self.assertNotIn('PRIVATE_DELETION_REQUEST',message)
+        self.user.guild_permissions=discord.Permissions.all()
+        interaction=self.i();await self.command('mod','inbox')(interaction)
+        self.assertIn('PRIVATE_DELETION_REQUEST',interaction.followup.send.call_args.args[0])
+
     async def test_data_deletion_requires_confirmation_and_keeps_server_isolation(self):
         p=self.store.profile(1,7); p['birthday']='07-23'; self.store.save_profile(1,7,p)
         view=DeleteView(self.service,7,1)

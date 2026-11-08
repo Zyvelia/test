@@ -4,7 +4,7 @@ from html import escape
 OPERATOR='ZyVelia'
 EMAIL='Vivi-Roseveil@proton.me'
 SUPPORT_SERVER='https://discord.gg/MWEJm7yJ4x'
-UPDATED='November 7, 2026'
+UPDATED='November 8, 2026'
 
 
 def contact_html():
@@ -57,15 +57,19 @@ PRIVACY=[
  ('Storage, retention and backups',
   'Vivi stores active data in a host-managed database and files. Configuration, moderation records, transcripts, uploads and other feature records '
   'do not all have automatic expiry; they can remain until removed or reviewed by the operator or responsible server staff. '
+  'Administrators can set age limits of 7–3,650 days for configuration history, resolved privacy requests and closed-ticket activity events; 0 leaves age-based cleanup off. History also has a 100-revision cap. Cleanup runs approximately every ten minutes while Vivi is online. These limits do not erase moderation cases, transcripts, Discord messages or backups. '
   'There is no single fixed deletion period for all record types. Backups and exports can retain earlier copies after an active record is deleted. '
   'The operator must separately review those copies and prevent deleted information from being unnecessarily restored. '
   'Encrypted full-data backups are an optional feature, not a promise that every file, database or export is encrypted. '
   'Information may be processed outside the United States. Storage and processing locations depend on hosting and external providers; contact ZyVelia for the current deployment details.'),
+ ('Browser drafts and staff access',
+  'Welcome, goodbye and embed editors automatically save unfinished drafts in this browser’s local storage, separated by Discord account, server and editor. Draft recovery does not publish content or change server settings. Drafts are available for up to seven days; expired drafts are cleared when an editor next opens. Use Restore draft or Discard draft in the editor. Anyone with access to your browser profile may access its local storage. Discord deletion requests cannot erase browser drafts. '
+  'Configuration history, retention settings and the deletion-review queue are administrator-only and recheck current Discord membership. Moderation and ticket pages require the relevant staff permissions. Avoid putting secrets in message templates or settings; earlier values can appear in configuration history and backups.'),
  ('Your choices and data requests',
   'You can choose whether to supply optional profile details, birthday or timezone information, change supported profile visibility, '
   'opt out of supported leaderboards and disable or clear AI memory. Use /tools delete_data in the relevant server and confirm the request. '
   'It removes your profile, associated birthday and AI memory, and attributable votes from that server’s active database, and asks staff to review retained records. '
-  'It does not automatically remove every transcript, upload, moderation record, reminder, previously published message, backup or record in another server. '
+  'It does not automatically remove every transcript, upload, moderation record, configuration revision, staff review note, reminder, previously published message, backup or record in another server. '
   'Uploaded profile banners have a separate /profile → banner delete control. '
   'For access, correction, deletion or other applicable privacy requests, email ZyVelia using the contact details below. '
   'We may need to verify control of your Discord account without asking for passwords or tokens. '
@@ -101,6 +105,7 @@ TERMS=[
  ('Server administration and moderation',
   'Only manage servers where you have the necessary authority. Server owners and administrators choose modules, roles, channels and settings. Only server owners can opt in to the global-ban network, delegating enforcement of the configured operator’s current and future entries. Withdrawal stops future network actions but does not itself undo existing server bans. Independent or unverifiable bans remain subject to local staff review. '
   'Server administrators are responsible for configuring permissions and informing members about enabled features. '
+  'Review privacy requests, explain any retained information, and choose retention limits carefully; automated cleanup can permanently remove older operational records. Review backups separately before restoring data that was previously deleted. '
   'Automated moderation can make mistakes; review significant actions. Server moderation decisions and appeals belong first with the responsible server staff. '
   'For suspected abuse of Vivi itself, contact ZyVelia.'),
  ('Your content and privacy',

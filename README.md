@@ -290,3 +290,5 @@ The dashboard now has a server home card, staff-only case search/details, report
 Welcome and goodbye embed editors also offer dynamic member-avatar/server-icon thumbnails and large images, an optional accent color, and a live preview. These settings are shared by automatic messages and confirmed dashboard sends; template images and colors remain the default.
 
 Welcome cards are configured inside **Welcome**, alongside the message and channel. Use **Add a welcome card** and **Design card** on that page. The Welcome switch pauses both text and cards without deleting their settings; old Welcome Cards links redirect to Welcome.
+
+Dashboard administrators can open **Change log**, **Setup tests**, and **Privacy & retention** from the server sidebar. Welcome/goodbye messages and embeds recover unfinished browser drafts with Restore/Discard controls. See [dashboard reliability and privacy](docs/DASHBOARD-CARE.md) for retention limits, deletion reviews, and testing behavior.

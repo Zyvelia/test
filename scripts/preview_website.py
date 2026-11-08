@@ -29,13 +29,15 @@ async def main(port,dashboard_preview=False):
             await bot.setup_hook();dashboard=Dashboard(bot.community)
             if dashboard_preview:
                 bot._connection.user=NS(id=99)
-                guild=NS(id=1,owner_id=7,name='Velvet Ruins',text_channels=[],channels=[],categories=[],voice_channels=[],roles=[],me=NS(display_name='Preview bot',guild_permissions=discord.Permissions(ban_members=True,view_audit_log=True),top_role=10),get_member=lambda uid:None,get_channel=lambda cid:None)
+                guild=NS(id=1,owner_id=7,default_role=NS(id=1),get_role=lambda ident:None,name='Velvet Ruins',text_channels=[],channels=[],categories=[],voice_channels=[],roles=[],me=NS(display_name='Preview bot',guild_permissions=discord.Permissions(ban_members=True,view_audit_log=True),top_role=10),get_member=lambda uid:None,get_channel=lambda cid:None)
                 welcome=MagicMock(spec=discord.TextChannel);welcome.id=3;welcome.name='welcome';welcome.send=AsyncMock()
                 welcome.permissions_for.return_value=discord.Permissions.all()
                 guild.text_channels=[welcome];guild.channels=[welcome];guild.member_count=42;guild.get_channel=lambda cid:welcome if cid==3 else None
                 guild.fetch_member=AsyncMock(side_effect=lambda uid:NS(id=uid,roles=[],guild_permissions=discord.Permissions.all() if uid==7 else discord.Permissions.none()))
                 ticket=MagicMock(spec=discord.TextChannel);ticket.id=4;ticket.name='ticket-preview';ticket.send=AsyncMock();ticket.permissions_for.return_value=discord.Permissions.all()
                 guild.text_channels.append(ticket);guild.channels.append(ticket);guild.get_channel=lambda cid:welcome if cid==3 else ticket if cid==4 else None
+                store.put_record(1,'privacy',dict(author=8,text='Synthetic deletion request for privacy review.',status='pending',created_at=time.time()),'preview-privacy')
+                store.put_record(1,'notification',dict(provider='github',source='Zyvelia/test',channel=3),'preview-watch')
                 case=store.add_case(1,8,7,'warning','Example case for the dashboard preview')
                 store.put_record(1,'report',dict(author=8,target=9,text='Synthetic report for staff review.',status='pending'),'preview-report')
                 store.put_record(1,'appeal',dict(author=8,case=case,text='Synthetic moderation appeal.',status='pending'),'preview-appeal')

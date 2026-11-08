@@ -148,7 +148,7 @@ class Website:
         filename=request.match_info.get('filename',request.path.rsplit('/',1)[-1])
         avatar=os.getenv('WEBSITE_AVATAR','neon-bob')
         if avatar not in AVATARS:avatar='neon-bob'
-        paths={'site.css':WEB/'site.css','site.js':WEB/'site.js','message-preview.js':WEB/'message-preview.js','serif.ttf':ROOT/'vivi/assets/fonts/serif.ttf','vivi-avatar.png':ROOT/'assets/vivi/avatars'/AVATARS[avatar],'arcade-preview.png':ROOT/'docs/assets/arcade-preview.png','favicon.svg':WEB/'favicon.svg'}
+        paths={'draft-recovery.js':WEB/'draft-recovery.js','site.css':WEB/'site.css','site.js':WEB/'site.js','message-preview.js':WEB/'message-preview.js','serif.ttf':ROOT/'vivi/assets/fonts/serif.ttf','vivi-avatar.png':ROOT/'assets/vivi/avatars'/AVATARS[avatar],'arcade-preview.png':ROOT/'docs/assets/arcade-preview.png','favicon.svg':WEB/'favicon.svg'}
         path=paths.get(filename)
         if not path or not path.is_file():raise web.HTTPNotFound(text='Asset not found.')
         return web.FileResponse(path,headers={'Cache-Control':'public, max-age=3600'})

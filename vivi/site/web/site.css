@@ -37,3 +37,5 @@
 .message-designer .welcome-preview-thumbnail{width:80px;height:80px;object-fit:cover;border-radius:8px;float:right;margin:0 0 12px 12px}
 .message-designer .welcome-preview-image{display:block;max-width:100%;max-height:280px;object-fit:contain;border-radius:8px;margin:12px 0}
 .message-designer input[type=color]{width:80px;height:40px;padding:3px}
+
+.draft-recovery{padding:14px 18px;background:var(--bg);border:1px solid var(--line);border-radius:10px;margin:12px}.draft-recovery p{font-size:12px;line-height:1.6}.draft-recovery button{margin-right:8px}.change-entry{padding:18px;margin:18px 0;background:var(--surface);border:1px solid var(--line);border-radius:12px}.change-table{overflow:auto;max-width:100%}.change-table table{width:100%;border-collapse:collapse}.change-table th,.change-table td{text-align:left;vertical-align:top;padding:12px;border:1px solid var(--line)}.change-table pre{white-space:pre-wrap;overflow-wrap:anywhere;min-width:120px;max-width:400px}.diagnostic-controls{padding:18px;border:1px solid var(--line);border-radius:12px;margin:18px 0}.diagnostic-controls form{display:inline-block;margin:5px}

@@ -70,7 +70,7 @@ FAMILIES={
 
 def family_for(key):return next((ident for ident,(_,keys,_) in FAMILIES.items() if key in keys),'server')
 def family_navigation(gid,current=None):
-    return ''.join('<details'+(' open' if current==ident else '')+f'><summary>{esc(label)}</summary>'+''.join(f'<a href="/configure?guild={gid}&module={key}">{esc(title(key))}</a>' for key in keys)+'</details>' for ident,(label,keys,_) in FAMILIES.items())
+    return f'<a href="/changes?guild={gid}">Change log</a><a href="/checks?guild={gid}">Setup tests</a><a href="/privacy-settings?guild={gid}">Privacy &amp; retention</a>'+''.join('<details'+(' open' if current==ident else '')+f'><summary>{esc(label)}</summary>'+''.join(f'<a href="/configure?guild={gid}&module={key}">{esc(title(key))}</a>' for key in keys)+'</details>' for ident,(label,keys,_) in FAMILIES.items())
 
 COMMAND_TERMS={'global_bans':'globalban','competitions':'competition','profiles':'profile','roles':'role','polls':'poll','giveaways':'giveaway','suggestions':'suggest','birthdays':'birthday','timezone_directory':'timezone','reminders':'remind','invite_tracking':'invite','translation':'translate'}
 HINTS={

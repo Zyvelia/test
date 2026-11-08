@@ -125,7 +125,7 @@ class AsyncTests(unittest.IsolatedAsyncioTestCase):
         register_commands(self.bot);register_extra(self.bot);register_operations(self.bot);register_voice(self.bot);register_productivity(self.bot)
         self.bot.tree.sync=AsyncMock(return_value=[])
         self.service=self.bot.community;self.p=self.service.productivity
-        self.guild=NS(id=1,name='Our Server',me=NS(id=99,display_name='Vivi'),get_member=lambda ident:None,
+        self.guild=NS(id=1,owner_id=99,fetch_member=AsyncMock(return_value=NS(id=7,roles=[],guild_permissions=discord.Permissions.all())),name='Our Server',me=NS(id=99,display_name='Vivi'),get_member=lambda ident:None,
                       text_channels=[],categories=[],voice_channels=[],roles=[],voice_client=None)
         self.bot.get_guild=lambda ident:self.guild if ident==1 else None
         self.user=NS(id=7,display_name='Alex',guild_permissions=discord.Permissions.all())

@@ -57,7 +57,7 @@ class StaffDashboard:
         links=[('home','Home','/staff')]
         if access['moderation']:links += [('cases','Cases','/staff/cases'),('queue','Reports & appeals','/staff/queue')]
         if access['tickets']:links += [('tickets','Tickets','/staff/tickets')]
-        if access['admin']:links += [('modules','Manage features','/modules'),('embeds','Saved embeds','/embeds')]
+        if access['admin']:links += [('modules','Manage features','/modules'),('embeds','Saved embeds','/embeds'),('changes','Change log','/changes'),('checks','Setup tests','/checks'),('privacy','Privacy & retention','/privacy-settings')]
         return '<nav class="related-modules staff-nav" aria-label="Staff workspace">'+''.join(f'<a href="{path}?guild={gid}"'+(' aria-current="page"' if key==active else '')+f'>{label}</a>' for key,label,path in links)+'</nav>'
     def staff_page(self,gid,access,active,body):
         response=self.page(self.staff_navigation(gid,access,active)+body)

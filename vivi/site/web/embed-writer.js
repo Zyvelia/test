@@ -5,6 +5,7 @@
  let fields=JSON.parse(hidden.value);
  function update(){
   hidden.value=JSON.stringify(fields);
+  form.dispatchEvent(new Event('vivi:editor-update'));
   for(const key of ['title','description','footer'])preview.querySelector('[data-preview="'+key+'"]').textContent=form.elements[key].value;
   preview.style.borderColor=form.elements.color.value;
   const target=preview.querySelector('[data-preview="fields"]');target.replaceChildren();
@@ -21,5 +22,6 @@
   for(const [text,delta] of [['Move up',-1],['Move down',1],['Remove',0]]){const button=document.createElement('button');button.type='button';button.textContent=text;button.disabled=delta<0&&index===0||delta>0&&index===fields.length-1;button.addEventListener('click',()=>{if(!delta)fields.splice(index,1);else [fields[index],fields[index+delta]]=[fields[index+delta],fields[index]];draw();});row.append(button);}container.append(row);
  });update();}
  document.querySelector('#embed-add-field').addEventListener('click',()=>{if(fields.length<25){fields.push({name:'',value:'',inline:false});draw();}});
- let dirty=false;form.addEventListener('input',()=>{dirty=true;update();});form.addEventListener('click',event=>{if(event.target.type==='button')dirty=true;});form.addEventListener('submit',()=>{update();dirty=false;});window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});draw();
+ form.addEventListener('vivi:draft-restored',()=>{try{const value=JSON.parse(hidden.value);if(!Array.isArray(value)||value.length>25||value.some(field=>!field||typeof field.name!=='string'||field.name.length>256||typeof field.value!=='string'||field.value.length>1024||typeof field.inline!=='boolean'))throw new Error();fields=value;draw();}catch{hidden.value=JSON.stringify(fields);draw();}});
+ let dirty=false;form.addEventListener('input',()=>{dirty=true;update();});form.addEventListener('click',event=>{if(event.target.type==='button')dirty=true;});form.addEventListener('submit',()=>{update();dirty=false;});window.addEventListener('beforeunload',event=>{if(dirty&&form.dataset.draftReady!=='true'){event.preventDefault();event.returnValue='';}});draw();
 })();

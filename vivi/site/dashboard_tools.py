@@ -16,7 +16,7 @@ class DashboardTools:
             rows+='<form action="/preview" method="post" target="_blank">'+hidden+f'<input name="type" type="hidden" value="{kind}"><textarea name="text" maxlength="1800" placeholder="Preview text">{html.escape(text)}</textarea>'
             if kind=='welcome': rows+=f'<input name="color" type="color" value="{html.escape(store.option(gid,"welcome_color","#87CEEB"))}">'
             rows+=f'<button>{label}</button></form>'
-        rows+='</details><details><summary>Configuration history</summary><p>Last 100 configuration revisions. Rollback affects settings, not messages or personal data.</p>'
+        rows+=f'</details><details><summary>Configuration history</summary><p><a href="/changes?guild={gid}">Browse change log and compare values →</a></p><p>Last 100 configuration revisions. Rollback affects settings, not messages or personal data.</p>'
         for row in store.history(gid)[:20]:
             rows+=f'<p>#{row["id"]} · {html.escape(row["created"])} · {html.escape(row["actor"])} · {html.escape(row["action"])} · <a href="/revision?guild={gid}&id={row["id"]}">View revision</a></p>'
         rows+='</details><details><summary>Scheduled backups</summary><p>Enable scheduled_backups and choose backup hours / backup keep above. Backups contain configuration only.</p><form action="/backup-now" method="post">'+hidden+'<button>Create backup now</button></form>'
@@ -60,7 +60,7 @@ class DashboardTools:
         return web.Response(body=png,content_type='image/png')
 
     async def revision(self,request):
-        gid,guild=await self.authorized_guild(request)
+        _,gid,guild=await self.care_access(request)
         try: ident=int(request.query.get('id',''))
         except ValueError: raise web.HTTPBadRequest(text='Invalid revision.')
         row=self.service.store.revision(gid,ident)
@@ -71,7 +71,7 @@ class DashboardTools:
             '<form action="/rollback" method="post">'+self.hidden(session,gid)+f'<input name="id" value="{ident}" type="hidden"><label><input name="confirm" type="checkbox" value="yes" required> Restore the After configuration from this revision</label><button>Roll back to this configuration</button></form>')
 
     async def rollback(self,request):
-        data,session,gid,guild=await self.form(request)
+        data,session,gid,guild=await self.care_form(request)
         if data.get('confirm')!='yes': raise web.HTTPBadRequest(text='Explicit rollback confirmation required.')
         try: ident=int(data.get('id',''))
         except ValueError: raise web.HTTPBadRequest(text='Invalid revision.')

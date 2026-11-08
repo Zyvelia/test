@@ -21,6 +21,7 @@ FEATURES = {
     'raid_protection': False, 'mention_protection': False, 'warning_thresholds': False, 'global_bans':False,
 }
 OPTION_TYPES = {
+    'retention_history_days':int,'retention_privacy_days':int,'retention_ticket_events_days':int,
     'welcome_appearance':dict,'goodbye_appearance':dict,
     'scam_image_distance':int,
     'welcome_channel':int, 'welcome_mode':str, 'goodbye_mode':str, 'welcome_embed':dict, 'goodbye_embed':dict,
@@ -73,6 +74,7 @@ def validate_option(key, value):
         if key[8:] not in FEATURES or type(value) is not bool: raise ValueError('Unknown feature or invalid switch.')
         return
     if key not in OPTION_TYPES or type(value) is not OPTION_TYPES[key]: raise ValueError('Unknown setting or invalid type.')
+    if key.startswith('retention_') and value!=0 and not 7<=value<=3650:raise ValueError('Use 0 or 7–3,650 retention days.')
     if isinstance(value,str) and len(value)>1800: raise ValueError('Setting is too long.')
     if key in {'welcome_appearance','goodbye_appearance'}:
         from vivi.site.message_templates import validate_appearance
